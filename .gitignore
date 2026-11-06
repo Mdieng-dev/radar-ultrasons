@@ -1,0 +1,10 @@
+# Keil
+Objects/
+Listings/
+*.uvguix.*
+*.bak
+JLinkLog.txt
+# Qt
+build*/
+*.pro.user
+CMakeLists.txt.user
