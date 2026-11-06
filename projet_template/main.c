@@ -14,17 +14,30 @@ extern void Init_Ethernet (void);
 /*----------------------------------------------------------------------------
  *      Tâche de test (vide) : à compléter par les étudiants
  *---------------------------------------------------------------------------*/
+ 
+
+ 
 osThreadId_t tid_Test;
 
+ void servo_set_angle(int deg){
+	double pulse_width;
+  pulse_width = 500+((deg * 2000)/180);
+	TIM10->CCR1 = (int)pulse_width*TIM10->ARR;
+}
+ 
 static void Thread_Test (void *argument)
 {
   (void)argument;
 
   // Initialisations propres à la tâche (si besoin) ici
-
+	int i = 0;
+	
   while (1)
   {
     // Votre boucle de test ici (mesure de distance, balayage du servo, etc.)
+		servo_set_angle(i);
+		if(i>180) i=0;
+		else i++;
 
     osDelay(100);   // période de la boucle : 100 ms
   }
@@ -47,8 +60,42 @@ int main(void)
 	/**********************************
 	Début Initialisation périphérique
 	**********************************/
-
-	//Initialiser vos périphériques ici
+	
+	//INIT GPIOI
+	RCC->AHB1ENR |= (1<<8); //Activation GPIO I
+	
+	GPIOI->MODER |= (1<<4); //Broche PI2 en sortie
+	
+	//INIT DAC
+	RCC->APB1ENR |= (1<<29); //Activer DAC
+	RCC->AHB1ENR |= (1<<0);
+	
+	GPIOA->MODER |= (3<<8); //Broche PA4 en analog
+	DAC->CR |= (1<<0); //Lancer DAC
+	
+	//INIT TIM10 (PWM)
+	RCC->AHB1ENR |= (1<<5);
+	RCC->APB2ENR |= (1<<17); //Activer TIM10
+	
+	GPIOF->MODER |= (2<<12);
+	GPIOF->AFR[0] |= (3<<24);
+	
+	TIM10->CCMR1 |= (6<<4);
+	TIM10->CCER |= (1<<0);
+	
+	TIM10->PSC = 107;
+	TIM10->ARR = 19999;
+	
+	TIM10->CR1 |= (1<<0);
+	
+	//INIT ADC3
+	RCC->APB2ENR |= (1<<10);
+	RCC->AHB1ENR |= (1<<5);
+	
+	GPIOF->MODER |= (3<<20);
+	
+	ADC3->SQR3 |= (8<<0);
+	ADC3->CR2 |= (1<<0);
 
 	/**********************************
 	Fin Initialisation périphérique
