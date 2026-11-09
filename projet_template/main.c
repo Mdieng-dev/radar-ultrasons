@@ -33,14 +33,15 @@ static void Thread_Test (void *argument)
   (void)argument;
 
   // Initialisations propres à la tâche (si besoin) ici
-	int i = 0;
+	int i = 0, sens;
 	
   while (1)
   {
     // Votre boucle de test ici (mesure de distance, balayage du servo, etc.)
 		servo_set_angle(i);
-		if(i>180) i=0;
-		else i++;
+		if(i>180) sens = -1;
+		else sens = 1;
+		i += sens;
 		angle = i;
 
     osDelay(100);   // période de la boucle : 100 ms
