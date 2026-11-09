@@ -20,7 +20,7 @@ Purpose     : AppWizard managed file, function content could be changed
 
 /*** Begin of user code area ***/
 #include "stm32f7xx.h"                  // Device header
-
+#include "stdio.h"
 /*** End of user code area ***/
 
 /*********************************************************************
@@ -33,6 +33,9 @@ Purpose     : AppWizard managed file, function content could be changed
 *
 *       cbID_SCREEN_00
 */
+
+extern int angle;
+
 void cbID_SCREEN_00(WM_MESSAGE * pMsg) {
   GUI_USE_PARA(pMsg);
 }
@@ -69,7 +72,7 @@ void ID_SCREEN_00__ID_ROTARY_00__WM_NOTIFICATION_VALUE_CHANGED(APPW_ACTION_ITEM 
 //  Val = APPW_GetValue(ID_SCREEN_00, ID_ROTARY_00, NULL);
 //  //Val vaut une valeur entre -300 et 300
 //  rc = (Val+300)*100/600;
-//	TIM10->CCR1 = (int)rc*43199;
+//	TIM10->CCR1 = (int)rc*19999;
 }
 
 /*********************************************************************
@@ -88,8 +91,11 @@ void ID_SCREEN_00__APPW_NOTIFICATION_INITDIALOG__ID_TIMER_00__APPW_JOB_START(APP
 *       ID_SCREEN_00__ID_TIMER_00__APPW_NOTIFICATION_TIMER
 */
 void ID_SCREEN_00__ID_TIMER_00__APPW_NOTIFICATION_TIMER(APPW_ACTION_ITEM * pAction, WM_HWIN hScreen, WM_MESSAGE * pMsg, int * pResult) {
+	char text[50];
 	APPW_SetValue(ID_SCREEN_00, ID_GAUGE_00, ADC3->DR);
 	ADC3->CR2 |= (1<<30);
+	sprintf(text, "Angle : %d deg", angle);
+	TEXT_SetText(WM_GetDialogItem(hScreen, ID_TEXT_00), text);
 }
 
 /*************************** End of file ****************************/

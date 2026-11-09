@@ -15,14 +15,17 @@ extern void Init_Ethernet (void);
  *      Tâche de test (vide) : à compléter par les étudiants
  *---------------------------------------------------------------------------*/
  
-
+int angle = 0;
  
 osThreadId_t tid_Test;
 
  void servo_set_angle(int deg){
 	double pulse_width;
-  pulse_width = 5000+(2500*deg)/180;
-	TIM10->CCR1 = (int)pulse_width*TIM10->ARR;
+	pulse_width = 500+((2000*deg)/180);// 2 ms - 180° & 0.5 ms - 0°
+	TIM10->CCR1 = (int)pulse_width;
+}
+ 
+void distance_cm(void){
 }
  
 static void Thread_Test (void *argument)
@@ -38,6 +41,7 @@ static void Thread_Test (void *argument)
 		servo_set_angle(i);
 		if(i>180) i=0;
 		else i++;
+		angle = i;
 
     osDelay(100);   // période de la boucle : 100 ms
   }
@@ -61,10 +65,12 @@ int main(void)
 	Début Initialisation périphérique
 	**********************************/
 	
-	//INIT GPIOI
+	//INIT GPIO
 	RCC->AHB1ENR |= (1<<8); //Activation GPIO I
+	RCC->AHB1ENR |= (1<<5); //Activation GPIO F
 	
 	GPIOI->MODER |= (1<<4); //Broche PI2 en sortie
+	GPIOF->MODER |= (1<<14); //Broche PF7 en sortie
 	
 	//INIT DAC
 	RCC->APB1ENR |= (1<<29); //Activer DAC
@@ -74,19 +80,18 @@ int main(void)
 	DAC->CR |= (1<<0); //Lancer DAC
 	
 	//INIT TIM10 (PWM)
-	RCC->AHB1ENR |= (1<<5);
 	RCC->APB2ENR |= (1<<17); //Activer TIM10
 	
-	GPIOF->MODER |= (2<<12);
+	GPIOF->MODER |= (2<<12); //Broche PF6 en alternate
 	GPIOF->AFR[0] |= (3<<24);
 	
 	TIM10->CCMR1 |= (6<<4);
 	TIM10->CCER |= (1<<0);
 	
-	TIM10->PSC = 107;
+	TIM10->PSC = 199;
 	TIM10->ARR = 19999;
 	
-	TIM10->CR1 |= (1<<0);
+	TIM10->CR1 |= (1<<0); //Démarrage du timer
 	
 	//INIT ADC3
 	RCC->APB2ENR |= (1<<10);
