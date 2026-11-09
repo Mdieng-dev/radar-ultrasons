@@ -39,12 +39,12 @@ static void Thread_Test (void *argument)
   {
     // Votre boucle de test ici (mesure de distance, balayage du servo, etc.)
 		servo_set_angle(i);
-		if(i>180) sens = -1;
-		else sens = 1;
+		if(i>=180) sens = -1;
+		if(i<=0) sens = 1;
 		i += sens;
 		angle = i;
 
-    osDelay(100);   // période de la boucle : 100 ms
+    osDelay(1_0);   // période de la boucle : 100 ms
   }
 }
 
