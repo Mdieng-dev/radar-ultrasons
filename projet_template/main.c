@@ -21,7 +21,7 @@ osThreadId_t tid_Test;
 
  void servo_set_angle(int deg){
 	double pulse_width;
-  pulse_width = 500+((deg * 2000)/180);
+  pulse_width = 5000+(2500*deg)/180;
 	TIM10->CCR1 = (int)pulse_width*TIM10->ARR;
 }
  
