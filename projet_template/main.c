@@ -40,7 +40,7 @@ void EXTI7_IRQHandler(void){
 
 void servo_set_angle(int deg){
 	double pulse_width;
-	pulse_width = 500+((2000*deg)/180);// 2 ms - 180? & 0.5 ms - 0?
+	pulse_width = 500+((2000*deg)/180);// 2 ms = 180° & 0.5 ms = 0°
 	TIM10->CCR1 = (int)pulse_width;
 }
  
@@ -51,20 +51,19 @@ double distance_cm(void){
 	// TRIG -> PB14
 	// ECHO -> PG6
 
-	// Envoi de l'impulsion de 10 ?s sur TRIG (PB14)
+	// Envoi de l'impulsion de 10 us sur TRIG (PB14)
 	GPIOB->ODR &= ~(1<<14); // TRIG à 0
 	
 	GPIOB->ODR |= (1<<14); // TRIG à 1
 	TIM11->PSC = 9;
 	TIM11->ARR = 199;
 	TIM11->CR1 |= (1<<0); // Démarrage du timer
-	osThreadFlagsWait((1<<0), osFlagsWaitAll, osWaitForever); // Attente de 10?s
+	osThreadFlagsWait((1<<0), osFlagsWaitAll, osWaitForever); // Attente de 10us
 	GPIOB->ODR &= ~(1<<14); //TRIG à 0
 
-	TIM11->PSC = 199;
-	TIM11->ARR = 0xFFFF;
+	TIM11->PSC = 199; // PSC à 199 pour incrémenter CNT du timer 11 chaque microsecondes
+	TIM11->ARR = 0xFFFF; // On compte jusquà 65635 microsecondes écoulés
 	
-	//Attendre que ECHO (PG6) passe à l'?tat haut
 	flag = osThreadFlagsWait((1<<1), osFlagsWaitAll, 30); // Attente du front montant de l'echo sur PG6 via EXTI7 (FM) avec timeout de 30ms
 	if((flag != osOK)) return -1.0f;
 	
@@ -73,16 +72,16 @@ double distance_cm(void){
 	flag = osThreadFlagsWait((1<<1), osFlagsWaitAll, 30); // Attente du front déscendant de l'echo sur PG6 via EXTI7 (FM) avec timeout de 30ms
 	if((flag != osOK)) return -1.0f;
 	
-	if((GPIOG->ODR&(1<<6)) == (1<<6)) t2 = TIM11->CNT; // On relève le temps t1 correspondant au front déscendant
+	if((GPIOG->ODR&(1<<6)) == (1<<6)) t2 = TIM11->CNT; // On relève le temps t2 correspondant au front déscendant
 	
-	dt = t2 - t1;
+	dt = t2 - t1; //On calcul la durée de l'impulsion
 	
-	return (dt*v)/2;
+	return (dt*v)/2; //On retourne le résultat du calcul de la distance de fonction de la durée et de la vitesse
 }
 
 static void Thread_Servo (void *argument)
 {
-	// Initialisations propres ? la t?che (si besoin) ici
+	// Initialisations propres à la tâche (si besoin) ici
 	int i = 0, sens;
 
 	while (1)
@@ -94,7 +93,7 @@ static void Thread_Servo (void *argument)
 		i += sens;
 		angle = i;
 
-		osDelay(10);   // p?riode de la boucle : 100 ms
+		osDelay(10);   // période de la boucle : 10 ms
 	}
 }
 
