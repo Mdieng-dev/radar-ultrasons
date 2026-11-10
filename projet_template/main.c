@@ -33,7 +33,7 @@ void TIM11_IRQHandler(void){
 	osThreadFlagsSet((osThreadId_t)tid_Capteur, (1<<0));
 }
 
-void EXTI7_IRQHandler(void){
+void EXTI9_5_IRQHandler(void){
 	EXTI->PR = (1 << 0);
 	osThreadFlagsSet((osThreadId_t)tid_Capteur, (1<<1));
 }
@@ -177,8 +177,8 @@ void Init_GPIOG(void){
 	EXTI->IMR |= (1 << 0);   // D?sactive le masque (active l'interruption)
 	
 	// Configuration NVIC
-	NVIC_SetPriority(EXTI7_IRQn, 1); 
-	NVIC_EnableIRQ(EXTI7_IRQn);
+	NVIC_SetPriority(EXTI9_5_IRQn, 1); 
+	NVIC_EnableIRQ(EXTI9_5_IRQn);
 }
 
 void Init_GPIOI(void) {
