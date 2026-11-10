@@ -45,7 +45,7 @@ void servo_set_angle(int deg){
 }
  
 double distance_cm(void){
-	uint32_t t1 = 0, t2 = 0, flag;
+	uint32_t t1 = 0xFFFFFFFF, t2 = 0xFFFFFFFF, flag;
 	double v = 0.0343, dt;
 	
 	// TRIG -> PB14
@@ -72,7 +72,7 @@ double distance_cm(void){
 	flag = osThreadFlagsWait((1<<1), osFlagsWaitAll, 30); // Attente du front déscendant de l'echo sur PG6 via EXTI7 (FM) avec timeout de 30ms
 	if((flag != osOK)) return -1.0f;
 	
-	if((GPIOG->ODR&(1<<6)) == (1<<6)) t2 = TIM11->CNT; // On relève le temps t2 correspondant au front déscendant
+	if((GPIOG->ODR&(1<<6)) == 0) t2 = TIM11->CNT; // On relève le temps t2 correspondant au front déscendant
 	
 	dt = t2 - t1; //On calcul la durée de l'impulsion
 	
