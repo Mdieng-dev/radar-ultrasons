@@ -14,7 +14,9 @@ extern void Init_Ethernet (void);
 /*----------------------------------------------------------------------------
  *      T?che de test (vide) : ? compl?ter par les ?tudiants
  *---------------------------------------------------------------------------*/
+void Init_GPIO_B(void);
 void Init_GPIOF(void);
+void Init_GPIOG(void);
 void Init_GPIOI(void);
 void Init_TIM10(void);
 void Init_TIM11(void);
@@ -31,51 +33,55 @@ void TIM11_IRQHandler(void){
 	osThreadFlagsSet((osThreadId_t)tid_Capteur, (1<<0));
 }
 
-void EXTI0_IRQHandler(void){
+void EXTI9_5_IRQHandler(void){
 	EXTI->PR = (1 << 0);
 	osThreadFlagsSet((osThreadId_t)tid_Capteur, (1<<1));
 }
 
 void servo_set_angle(int deg){
 	double pulse_width;
-	pulse_width = 500+((2000*deg)/180);// 2 ms - 180? & 0.5 ms - 0?
+	pulse_width = 500+((2000*deg)/180);// 2 ms = 180° & 0.5 ms = 0°
 	TIM10->CCR1 = (int)pulse_width;
 }
  
 double distance_cm(void){
-	uint32_t t1, t2, flag;
+	uint32_t t1 = 0xFFFFFFFF, t2 = 0xFFFFFFFF, flag;
 	double v = 0.0343, dt;
-
-	// Envoi de l'impulsion de 10 ?s sur TRIG (PF7)
-	GPIOF->ODR &= ~(1 << 7); //TRIG ? 0
-	TIM11->PSC = 1;
-	TIM11->ARR = 199;
-	TIM11->CR1 |= (1 << 0); //D?marrage du timer
-	osThreadFlagsWait((1<<0), osFlagsWaitAll, osWaitForever); //Attente de 2?s
 	
-	GPIOF->ODR |= (1 << 7); //TRIG ? 1
+	// TRIG -> PB14
+	// ECHO -> PG6
+
+	// Envoi de l'impulsion de 10 us sur TRIG (PB14)
+	GPIOB->ODR &= ~(1<<14); // TRIG à 0
+	
+	GPIOB->ODR |= (1<<14); // TRIG à 1
 	TIM11->PSC = 9;
 	TIM11->ARR = 199;
-	osThreadFlagsWait((1<<0), osFlagsWaitAll, osWaitForever); //Attente de 10?s
-	GPIOF->ODR &= ~(1 << 7); //TRIG ? 0
+	TIM11->CR1 |= (1<<0); // Démarrage du timer
+	osThreadFlagsWait((1<<0), osFlagsWaitAll, osWaitForever); // Attente de 10us
+	GPIOB->ODR &= ~(1<<14); //TRIG à 0
 
-	TIM11->PSC = 199;
-	TIM11->ARR = 0xFFFF;
+	TIM11->PSC = 199; // PSC à 199 pour incrémenter CNT du timer 11 chaque microsecondes
+	TIM11->ARR = 0xFFFF; // On compte jusquà 65635 microsecondes écoulés
 	
-	//Attendre que ECHO (PF8) passe ? l'?tat haut
-	t1 = TIM11->CNT;
-	flag = osThreadFlagsWait((1<<1), osFlagsWaitAll, 30); //Attente de l'echo sur PI0 via EXTI0 (FM) avec timeout de 30ms
-	if(!(flag = osOK)) return -1.0f;
+	flag = osThreadFlagsWait((1<<1), osFlagsWaitAll, 30); // Attente du front montant de l'echo sur PG6 via EXTI7 (FM) avec timeout de 30ms
+	if((flag != osOK)) return -1.0f;
 	
-	t2 = TIM11->CNT;
-	dt = t2 - t1;
+	if((GPIOG->ODR&(1<<6)) == (1<<6)) t1 = TIM11->CNT; // On relève le temps t1 correspondant au front montant
 	
-	return (dt*v)/2;
+	flag = osThreadFlagsWait((1<<1), osFlagsWaitAll, 30); // Attente du front déscendant de l'echo sur PG6 via EXTI7 (FM) avec timeout de 30ms
+	if((flag != osOK)) return -1.0f;
+	
+	if((GPIOG->ODR&(1<<6)) == 0) t2 = TIM11->CNT; // On relève le temps t2 correspondant au front déscendant
+	
+	dt = t2 - t1; //On calcul la durée de l'impulsion
+	
+	return (dt*v)/2; //On retourne le résultat du calcul de la distance de fonction de la durée et de la vitesse
 }
 
 static void Thread_Servo (void *argument)
 {
-	// Initialisations propres ? la t?che (si besoin) ici
+	// Initialisations propres à la tâche (si besoin) ici
 	int i = 0, sens;
 
 	while (1)
@@ -87,7 +93,7 @@ static void Thread_Servo (void *argument)
 		i += sens;
 		angle = i;
 
-		osDelay(10);   // p?riode de la boucle : 100 ms
+		osDelay(10);   // période de la boucle : 10 ms
 	}
 }
 
@@ -146,9 +152,37 @@ int main(void)
   while (1);
 }
 
+void Init_GPIOB(void){
+	RCC->AHB1ENR |= (1<<1); // Activation de l'horloge du GPIO B
+	GPIOF->MODER |= (1<<28); // PIN PB14 en sortie (TRIG)
+}
+
+void Init_GPIOF(void){
+	RCC->AHB1ENR |= (1<<5); // Activation de l'horloge du GPIO F
+	GPIOF->MODER |= (1<<14); // PIN PF7 en sortie
+}
+
+void Init_GPIOG(void){
+	RCC->AHB1ENR |= (1<<6); // Activation de l'horloge du GPIO G
+	RCC->APB2ENR |= (1 << 14); // Activation de l'horloge de SYSCFG
+	
+	GPIOF->MODER |= (1<<12); // PIN PG6 en entrée (ECHO)
+	
+	// Configuration EXTI sur PG7
+	SYSCFG->EXTICR[7] &= ~(0xF<<0); // Nettoie la s?lection pour EXTI7
+	SYSCFG->EXTICR[7] |= (6<<0);    // Relie PG7 ? EXTI7
+
+	EXTI->RTSR |= (1 << 0);  // D?clenchement sur front montant
+	EXTI->FTSR |= (1 << 0); // D?clenchement sur front descendant
+	EXTI->IMR |= (1 << 0);   // D?sactive le masque (active l'interruption)
+	
+	// Configuration NVIC
+	NVIC_SetPriority(EXTI9_5_IRQn, 1); 
+	NVIC_EnableIRQ(EXTI9_5_IRQn);
+}
+
 void Init_GPIOI(void) {
     RCC->AHB1ENR |= (1 << 8);  // Activation de l'horloge du GPIO I
-    RCC->APB2ENR |= (1 << 14); // Activation de l'horloge de SYSCFG
 
     // Configuration PI0 (Entr?e ECHO)
     GPIOI->MODER &= ~(3 << 0); // PIN PI0 en entr?e
@@ -157,23 +191,6 @@ void Init_GPIOI(void) {
     // Configuration PI2 (Sortie LED)
     GPIOI->MODER &= ~(3 << 4); // Nettoie les bits 5 et 4
     GPIOI->MODER |= (1 << 4);  // PIN PI2 en soritie (LED)
-
-    // Configuration EXTI0 sur PI0
-    SYSCFG->EXTICR[0] &= ~(0xF << 0); // Nettoie la s?lection pour EXTI0
-    SYSCFG->EXTICR[0] |= (8 << 0);    // Relie PI0 ? EXTI0
-
-    EXTI->RTSR |= (1 << 0);  // D?clenchement sur front montant
-    EXTI->FTSR &= ~(1 << 0); // Ignore le front descendant
-    EXTI->IMR |= (1 << 0);   // D?sactive le masque (active l'interruption)
-    
-    // Configuration NVIC
-    NVIC_SetPriority(EXTI0_IRQn, 1); 
-    NVIC_EnableIRQ(EXTI0_IRQn);
-}
-
-void Init_GPIOF(void){
-	RCC->AHB1ENR |= (1<<5); // Activation GPIO F
-	GPIOF->MODER |= (1<<14); // PIN PF7 en sortie (TRIG)
 }
 
 void Init_TIM10(void){
