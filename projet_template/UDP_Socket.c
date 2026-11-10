@@ -11,11 +11,17 @@
 #include "stm32f7xx.h"                  // Device header
 #include "AppWizard.h"
 #include <stdio.h>
+<<<<<<< HEAD
 #include <string.h>
 
 //------- CONSTANT
 #define UDP_PORT 5000
  
+=======
+
+#define UDP_PORT 5000
+
+>>>>>>> 424c8c0316fd9cd369dc2d05654b014940417d7f
 int32_t udp_sock;                       // UDP socket handle
  
  
@@ -33,6 +39,7 @@ static void reply(const NET_ADDR *addr, const char *msg) {
 }
 
 // Notify the user application about UDP socket events.
+<<<<<<< HEAD
 uint32_t udp_cb_func (int32_t socket, const NET_ADDR *addr, const uint8_t *buf, uint32_t len) {
   uint32_t i;
   int angle = 0;
@@ -67,6 +74,12 @@ uint32_t udp_cb_func (int32_t socket, const NET_ADDR *addr, const uint8_t *buf, 
   }
   else {
     reply(addr, "ERR UNKNOWN\n");
+=======
+uint32_t udp_cb_func (int32_t socket, const  NET_ADDR *addr, const uint8_t *buf, uint32_t len) {
+	int val_angle = 0;
+  // Data received
+  if ((buf[0] == 0x41) && (buf[1] == 0x4E) && (buf[2] == 0x47) && (buf[3] == 0x4C) && (buf[4] == 0x45)) {
+>>>>>>> 424c8c0316fd9cd369dc2d05654b014940417d7f
   }
   return (0);
 }
@@ -75,7 +88,10 @@ uint32_t udp_cb_func (int32_t socket, const NET_ADDR *addr, const uint8_t *buf, 
 void send_udp_data (void) {
  
   if (udp_sock > 0) {
+<<<<<<< HEAD
     // Example
+=======
+>>>>>>> 424c8c0316fd9cd369dc2d05654b014940417d7f
     // IPv4 address: 192.168.0.1
     NET_ADDR addr = { NET_ADDR_IP4, 5000, 192, 168, 0, 1 };
     uint8_t *sendbuf;
@@ -85,7 +101,10 @@ void send_udp_data (void) {
     sendbuf[1] = 0xAA;
  
     netUDP_Send (udp_sock, &addr, sendbuf, 2);
+<<<<<<< HEAD
     
+=======
+>>>>>>> 424c8c0316fd9cd369dc2d05654b014940417d7f
   }
 }
  
