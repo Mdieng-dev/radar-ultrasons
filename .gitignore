@@ -10,3 +10,6 @@ build*/
 CMakeLists.txt.user
 *.update@*
 DebugConfig/
+.qtcreator/
+*.update@*
+DebugConfig/
