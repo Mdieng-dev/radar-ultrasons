@@ -75,8 +75,6 @@ double distance_cm(void){
 
 static void Thread_Servo (void *argument)
 {
-	(void)argument;
-
 	// Initialisations propres ? la t?che (si besoin) ici
 	int i = 0, sens;
 
