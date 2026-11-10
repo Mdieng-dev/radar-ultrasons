@@ -8,3 +8,5 @@ JLinkLog.txt
 build*/
 *.pro.user
 CMakeLists.txt.user
+*.update@*
+DebugConfig/
