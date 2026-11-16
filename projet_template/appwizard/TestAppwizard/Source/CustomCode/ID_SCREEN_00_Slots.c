@@ -44,8 +44,8 @@ void cbID_SCREEN_00(WM_MESSAGE * pMsg) {
 void ID_SCREEN_00__ID_SWITCH_00__WM_NOTIFICATION_VALUE_CHANGED(APPW_ACTION_ITEM * pAction, WM_HWIN hScreen, WM_MESSAGE * pMsg, int * pResult) {
   int Val;
   Val = APPW_GetValue(ID_SCREEN_00, ID_SWITCH_00, NULL);
-  //Val vaut 0 ou 1
-  //code à exécuter à mettre ici
+  if(Val==1) GPIOI->ODR |= (1<<2);
+	else GPIOI->ODR &= ~(1<<2);
 }
 
 /*********************************************************************
@@ -56,7 +56,7 @@ void ID_SCREEN_00__ID_SLIDER_00__WM_NOTIFICATION_VALUE_CHANGED(APPW_ACTION_ITEM 
   int Val;
   Val = APPW_GetValue(ID_SCREEN_00, ID_SLIDER_00, NULL);
   //Val vaut une valeur entre 0 et 100
-  //code à exécuter à mettre ici
+  DAC->DHR12R1 = Val*4095.0/100;
 }
 
 /*********************************************************************
@@ -65,9 +65,11 @@ void ID_SCREEN_00__ID_SLIDER_00__WM_NOTIFICATION_VALUE_CHANGED(APPW_ACTION_ITEM 
 */
 void ID_SCREEN_00__ID_ROTARY_00__WM_NOTIFICATION_VALUE_CHANGED(APPW_ACTION_ITEM * pAction, WM_HWIN hScreen, WM_MESSAGE * pMsg, int * pResult) {
   int Val;
-  Val = APPW_GetValue(ID_SCREEN_00, ID_ROTARY_00, NULL);
-  //Val vaut une valeur entre -900 et 900
-  //code à exécuter à mettre ici
+	double rc;
+//  Val = APPW_GetValue(ID_SCREEN_00, ID_ROTARY_00, NULL);
+//  //Val vaut une valeur entre -300 et 300
+//  rc = (Val+300)*100/600;
+//	TIM10->CCR1 = (int)rc*43199;
 }
 
 /*********************************************************************
@@ -86,10 +88,8 @@ void ID_SCREEN_00__APPW_NOTIFICATION_INITDIALOG__ID_TIMER_00__APPW_JOB_START(APP
 *       ID_SCREEN_00__ID_TIMER_00__APPW_NOTIFICATION_TIMER
 */
 void ID_SCREEN_00__ID_TIMER_00__APPW_NOTIFICATION_TIMER(APPW_ACTION_ITEM * pAction, WM_HWIN hScreen, WM_MESSAGE * pMsg, int * pResult) {
-  GUI_USE_PARA(pAction);
-  GUI_USE_PARA(hScreen);
-  GUI_USE_PARA(pMsg);
-  GUI_USE_PARA(pResult);
+	APPW_SetValue(ID_SCREEN_00, ID_GAUGE_00, ADC3->DR);
+	ADC3->CR2 |= (1<<30);
 }
 
 /*************************** End of file ****************************/
