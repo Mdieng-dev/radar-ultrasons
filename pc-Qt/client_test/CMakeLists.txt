@@ -1,22 +1,36 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(client_test VERSION 0.1 LANGUAGES CXX)
+project(client_test VERSION 0.1 LANGUAGES C CXX)
 
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets)
 
+# Module réseau écrit en C (Winsock) : partagé par l'application Qt
+# et par le client console de test.
+set(NET_SOURCES
+        udp_client.c
+        udp_client.h
+        radar_proto.c
+        radar_proto.h
+)
+
 set(PROJECT_SOURCES
         main.cpp
         dialog.cpp
         dialog.h
         dialog.ui
+        radarworker.cpp
+        radarworker.h
+        ${NET_SOURCES}
 )
 
 if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
@@ -43,6 +57,16 @@ else()
 endif()
 
 target_link_libraries(client_test PRIVATE Qt${QT_VERSION_MAJOR}::Widgets)
+if(WIN32)
+    target_link_libraries(client_test PRIVATE ws2_32)   # Winsock 2
+endif()
+
+# Client console : teste le module réseau C sans interface graphique.
+add_executable(udp_cli udp_cli.c ${NET_SOURCES})
+set_target_properties(udp_cli PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
+if(WIN32)
+    target_link_libraries(udp_cli PRIVATE ws2_32)
+endif()
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
 # If you are developing for iOS or macOS you should consider setting an
