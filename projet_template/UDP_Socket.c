@@ -20,7 +20,7 @@ int32_t udp_sock;                       // UDP socket handle
  
  
 extern void  servo_set_angle(int deg);
-extern double capteur_d_cm;    // < 0 si pas d'écho
+extern float capteur_d_cm;
 
 /* Envoie un texte à l'expéditeur */
 static void reply(const NET_ADDR *addr, const char *msg) {
@@ -59,8 +59,7 @@ uint32_t udp_cb_func (int32_t socket, const NET_ADDR *addr, const uint8_t *buf, 
     if (d < 0) {
       reply(addr, "DIST TIMEOUT\n");
     } else {
-      d10 = (int)(d * 10 + 0.5f);              // 23.47 -> 235
-      sprintf(rep, "DIST %d.%d\n", d10 / 10, d10 % 10);
+      sprintf(rep, "DIST %.1f\n", d);
       reply(addr, rep);
     }
   }
