@@ -4,10 +4,12 @@ Listings/
 *.uvguix.*
 *.bak
 JLinkLog.txt
-# Qt
+# Qt (fichiers générés, propres à chaque PC : ne jamais les versionner)
 build*/
-*.pro.user
-CMakeLists.txt.user
+*.user
+*.user.*
+*.autosave
+.qmake.stash
 *.update@*
 DebugConfig/
 .qtcreator/
