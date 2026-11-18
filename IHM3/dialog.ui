@@ -1,0 +1,352 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>Dialog</class>
+ <widget class="QDialog" name="Dialog">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>980</width>
+    <height>580</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Radar Ultrason 180° - STM32F746 (Client UDP)</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout_Main">
+   <item>
+    <layout class="QHBoxLayout" name="horizontalLayout_Top">
+     <item>
+      <widget class="RadarWidget" name="radarWidget" native="true">
+       <property name="sizePolicy">
+        <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+         <horstretch>2</horstretch>
+         <verstretch>1</verstretch>
+        </sizepolicy>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QGroupBox" name="groupBox_Tableau">
+       <property name="title">
+        <string>Tableau Angle / Distance</string>
+       </property>
+       <layout class="QVBoxLayout" name="verticalLayout_Table">
+        <item>
+         <widget class="QTableWidget" name="tableWidget_Mesures">
+          <property name="minimumSize">
+           <size>
+            <width>240</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="editTriggers">
+           <set>QAbstractItemView::NoEditTriggers</set>
+          </property>
+          <property name="selectionBehavior">
+           <set>QAbstractItemView::SelectRows</set>
+          </property>
+          <column>
+           <property name="text">
+            <string>Angle (°)</string>
+           </property>
+          </column>
+          <column>
+           <property name="text">
+            <string>Distance (cm)</string>
+           </property>
+          </column>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="btn_ExportCsv">
+          <property name="text">
+           <string>Exporter CSV</string>
+          </property>
+          <property name="autoDefault">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="horizontalLayout_Controls">
+     <item>
+      <widget class="QGroupBox" name="groupBox_Reseau">
+       <property name="title">
+        <string>Réseau (Routeur / Carte)</string>
+       </property>
+       <layout class="QFormLayout" name="formLayout">
+        <item row="0" column="0">
+         <widget class="QLabel" name="label_TextIP">
+          <property name="text">
+           <string>Adresse IP :</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1">
+         <widget class="QLineEdit" name="lineEdit_IP">
+          <property name="text">
+           <string>192.168.184.160</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="0">
+         <widget class="QLabel" name="label_TextPort">
+          <property name="text">
+           <string>Port UDP :</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="1">
+         <widget class="QLineEdit" name="lineEdit_Port">
+          <property name="text">
+           <string>8003</string>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="0">
+         <widget class="QLabel" name="label_TextPortee">
+          <property name="text">
+           <string>Portée radar (cm) :</string>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="1">
+         <widget class="QSpinBox" name="spinBox_Portee">
+          <property name="minimum">
+           <number>20</number>
+          </property>
+          <property name="maximum">
+           <number>400</number>
+          </property>
+          <property name="singleStep">
+           <number>10</number>
+          </property>
+          <property name="value">
+           <number>200</number>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+     </item>
+     <item>
+      <widget class="QGroupBox" name="groupBox_Unitaire">
+       <property name="title">
+        <string>Commandes Unitaires (ANGLE / DIST)</string>
+       </property>
+       <layout class="QGridLayout" name="gridLayout_Unitaire">
+        <item row="0" column="0">
+         <widget class="QLabel" name="label_TextAngleCible">
+          <property name="text">
+           <string>Angle cible (°) :</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1">
+         <widget class="QSpinBox" name="spinBox_AngleCible">
+          <property name="minimum">
+           <number>0</number>
+          </property>
+          <property name="maximum">
+           <number>180</number>
+          </property>
+          <property name="value">
+           <number>90</number>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="0" colspan="2">
+         <widget class="QPushButton" name="btn_EnvoyerAngle">
+          <property name="text">
+           <string>Orienter (ANGLE)</string>
+          </property>
+          <property name="autoDefault">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="0" colspan="2">
+         <widget class="QPushButton" name="btn_MesurerDist">
+          <property name="text">
+           <string>Mesurer distance (DIST)</string>
+          </property>
+          <property name="autoDefault">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+     </item>
+     <item>
+      <widget class="QGroupBox" name="groupBox_Scan">
+       <property name="title">
+        <string>Paramètres Balayage (SCAN)</string>
+       </property>
+       <layout class="QGridLayout" name="gridLayout_Scan">
+        <item row="0" column="0">
+         <widget class="QLabel" name="label_TextDebut">
+          <property name="text">
+           <string>Angle de départ (°) :</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1">
+         <widget class="QSpinBox" name="spinBox_AngleDebut">
+          <property name="minimum">
+           <number>0</number>
+          </property>
+          <property name="maximum">
+           <number>180</number>
+          </property>
+          <property name="value">
+           <number>0</number>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="0">
+         <widget class="QLabel" name="label_TextFin">
+          <property name="text">
+           <string>Angle d'arrivée (°) :</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="1">
+         <widget class="QSpinBox" name="spinBox_AngleFin">
+          <property name="minimum">
+           <number>0</number>
+          </property>
+          <property name="maximum">
+           <number>180</number>
+          </property>
+          <property name="value">
+           <number>180</number>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="0">
+         <widget class="QLabel" name="label_TextPas">
+          <property name="text">
+           <string>Pas (°) :</string>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="1">
+         <widget class="QSpinBox" name="spinBox_PasScan">
+          <property name="minimum">
+           <number>1</number>
+          </property>
+          <property name="maximum">
+           <number>90</number>
+          </property>
+          <property name="value">
+           <number>10</number>
+          </property>
+         </widget>
+        </item>
+        <item row="3" column="0">
+         <widget class="QPushButton" name="btn_ScanUnique">
+          <property name="text">
+           <string>Lancer SCAN</string>
+          </property>
+          <property name="autoDefault">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+        <item row="3" column="1">
+         <widget class="QPushButton" name="btn_Clear">
+          <property name="text">
+           <string>Effacer</string>
+          </property>
+          <property name="autoDefault">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+     </item>
+     <item>
+      <widget class="QGroupBox" name="groupBox_Mesures">
+       <property name="title">
+        <string>Dernière Mesure</string>
+       </property>
+       <layout class="QGridLayout" name="gridLayout">
+        <item row="0" column="0">
+         <widget class="QLabel" name="label_TextAngle">
+          <property name="text">
+           <string>Angle :</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1">
+         <widget class="QLabel" name="label_Angle">
+          <property name="font">
+           <font>
+            <pointsize>12</pointsize>
+            <bold>true</bold>
+           </font>
+          </property>
+          <property name="text">
+           <string>0 °</string>
+          </property>
+          <property name="alignment">
+           <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="0">
+         <widget class="QLabel" name="label_TextDist">
+          <property name="text">
+           <string>Distance :</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="1">
+         <widget class="QLabel" name="label_Distance">
+          <property name="font">
+           <font>
+            <pointsize>12</pointsize>
+            <bold>true</bold>
+           </font>
+          </property>
+          <property name="text">
+           <string>-- cm</string>
+          </property>
+          <property name="alignment">
+           <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QLabel" name="label_Statut">
+     <property name="text">
+      <string>Prêt — Configurez l'adresse IP et le port UDP.</string>
+     </property>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <customwidgets>
+  <customwidget>
+   <class>RadarWidget</class>
+   <extends>QWidget</extends>
+   <header>radar_widget.h</header>
+   <container>1</container>
+  </customwidget>
+ </customwidgets>
+ <resources/>
+ <connections/>
+</ui>
