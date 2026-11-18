@@ -13,17 +13,17 @@
 #define UDP_PORT 5000
 #define FLAG_START_SCAN (1<<0)
 #define MAX_UDP_LEN 1400  // Limite sous le MTU Ethernet (1500 octets)
-#define SERVO_SABILISATION_MS 120   // Temps de stabilisation mécanique du servomoteur
+#define SERVO_SABILISATION_MS 120   // Temps de stabilisation mÃ©canique du servomoteur
 #define SENSOR_DELAY_MS 60    // Intervalle minimal entre deux mesures HC-SR04
 
 int32_t udp_sock;                  // UDP socket handle
 
-// Fonctions et variables externes définies dans main.c
+// Fonctions et variables externes dÃ©finies dans main.c
 extern void  servo_set_angle(int deg);
 extern float distance_cm(void);
 extern float capteur_d_cm;
 
-// Contexte partagé entre udp_cb_func et Thread_Scan
+// Contexte partagÃ© entre udp_cb_func et Thread_Scan
 static osThreadId_t tid_Scan = NULL;
 volatile uint8_t scan_en_cours = 0;
 
@@ -32,10 +32,10 @@ static int scan_fin = 180;
 static int scan_pas = 10;
 static NET_ADDR scan_client_addr;
 
-// Variable intermédiaire partagée avec ID_SCREEN_Slots.c pour la récupération de l'angle du servo
+// Variable intermÃ©diaire partagÃ©e avec ID_SCREEN_Slots.c pour la rÃ©cupÃ©ration de l'angle du servo
 int angle = 0;
 
-/* Envoie un texte ASCII à l'expéditeur */
+/* Envoie un texte ASCII Ã  l'expÃ©diteur */
 static void reply(const NET_ADDR *addr, const char *msg) {
   uint32_t n = (uint32_t)strlen(msg);
   if (n == 0 || udp_sock <= 0) return;
@@ -47,14 +47,14 @@ static void reply(const NET_ADDR *addr, const char *msg) {
   }
 }
 
-/* Tâche RTOS dédiée à l'exécution asynchrone du balayage SCAN */
+// TÃ¢che RTOS dÃ©diÃ©e Ã  l'exÃ©cution asynchrone du balayage SCAN
 static void Thread_Scan(void *argument) {
   (void)argument;
   char udp_len[MAX_UDP_LEN];
   char ligne[32];
 
   while (1) {
-    // Attente passive du déclenchement par udp_cb_func
+    // Attente passive du dÃ©clenchement par udp_cb_func
     osThreadFlagsWait(FLAG_START_SCAN, osFlagsWaitAll, osWaitForever);
 
     size_t offset = 0;
@@ -67,11 +67,13 @@ static void Thread_Scan(void *argument) {
       servo_set_angle(a);
       osDelay(SERVO_SABILISATION_MS);
 
-      // 2. Mesure directe de distance (distance_cm gère déjà le timeout de 30 ms)
+      // 2. Mesure directe de distance (distance_cm gÃ¨re dÃ©jÃ  le timeout de 30 ms)
+      osMutexAcquire(mutex_Capteur, 60);
       float d = distance_cm();
+      osMutexRelease(mutex_Capteur);
       capteur_d_cm = d;
 
-      // 3. Formatage de la ligne "<angle> <cm>\n" (1 décimale)
+      // 3. Formatage de la ligne "<angle> <cm>\n" (1 dÃ©cimale)
       int len_ligne;
       if (d < 0.0f) {
         len_ligne = snprintf(ligne, sizeof(ligne), "%d -1.0\n", a);
@@ -81,7 +83,7 @@ static void Thread_Scan(void *argument) {
         len_ligne = snprintf(ligne, sizeof(ligne), "%d %.1f\n", a, d);
       }
 
-      // Vérification pour garantir que le balayage tient dans un seul datagramme UDP
+      // VÃ©rification pour garantir que le balayage tient dans un seul datagramme UDP
       if (len_ligne > 0 && (offset + (size_t)len_ligne + 5U) < sizeof(udp_len)) {
         memcpy(&udp_len[offset], ligne, (size_t)len_ligne);
         offset += (size_t)len_ligne;
@@ -89,7 +91,7 @@ static void Thread_Scan(void *argument) {
       }
 			
 			else {
-        break; // Arrêt propre si le pas demandé génère trop de lignes pour un datagramme
+        break; // ArrÃªt propre si le pas demandÃ© gÃ©nÃ¨re trop de lignes pour un datagramme
       }
 
       // 4. Espacement obligatoire d'au moins 60 ms entre deux mesures ultrason
@@ -100,22 +102,22 @@ static void Thread_Scan(void *argument) {
     memcpy(&udp_len[offset], "END\n", 5U);
     offset += 4;
 
-    // Envoi groupé vers le client
+    // Envoi groupÃ© vers le client
     reply(&scan_client_addr, udp_len);
 
     scan_en_cours = 0;
   }
 }
 
-/* Fonction de rappel appelée à chaque datagramme UDP reçu */
+/* Fonction de rappel appelÃ©e Ã  chaque datagramme UDP reÃ§u */
 uint32_t udp_cb_func(int32_t socket, const NET_ADDR *addr, const uint8_t *buf, uint32_t len) {
   (void)socket;
   char cmd[64];
   char rep[32];
-  int angle, d_start, d_end, d_step;
+  int cmd_angle, d_start, d_end, d_step;
 
-  //--- Copier buf en vraie chaîne C terminée par '\0' en s'appuyant sur len
-  if (len >= sizeof(cmd)) len = sizeof(cmd) - 1;
+  //--- Copier buf en vraie chaÃ®ne C terminÃ©e par '\0' en s'appuyant sur len
+  if (len >= sizeof(cmd)) len = (uint32_t)(sizeof(cmd) - 1);
   memcpy(cmd, buf, len);
   cmd[len] = '\0';
 
@@ -125,13 +127,14 @@ uint32_t udp_cb_func(int32_t socket, const NET_ADDR *addr, const uint8_t *buf, u
   }
 
   //---- Analyse des commandes
-  if (sscanf(cmd, "ANGLE %d", &angle) == 1) {
+  if (sscanf(cmd, "ANGLE %d", &cmd_angle) == 1) {
     if (scan_en_cours) {
       reply(addr, "ERR BUSY\n");
     }
 		
-		else if (angle >= 0 && angle <= 180) {
-      servo_set_angle(angle);
+		else if (cmd_angle >= 0 && cmd_angle <= 180) {
+      angle = cmd_angle;
+      servo_set_angle(cmd_angle);
       reply(addr, "OK\n");
     }
 		
@@ -187,7 +190,7 @@ uint32_t udp_cb_func(int32_t socket, const NET_ADDR *addr, const uint8_t *buf, u
   return 0;
 }
 
-/* Initialise la pile réseau, la tâche de scan et ouvre le socket UDP */
+/* Initialise la pile rÃ©seau, la tÃ¢che de scan et ouvre le socket UDP */
 void Init_Ethernet(void) {
   netInitialize();
 

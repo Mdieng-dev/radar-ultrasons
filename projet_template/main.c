@@ -3,7 +3,7 @@
 extern void configuration_overclock(void);
 extern int Init_GUIThread (void);
 extern void Init_Ethernet (void);
-extern volatile uint8_t scan_en_cours;  // Défini dans UDP_Socket.c
+extern volatile uint8_t scan_en_cours;  // DÃ©fini dans UDP_Socket.c
 
 #ifdef _RTE_
 #include "RTE_Components.h"             // Component selection
@@ -15,9 +15,9 @@ extern volatile uint8_t scan_en_cours;  // Défini dans UDP_Socket.c
 // Utilise PB15 pour ECHO (commenter pour basculer sur PG6)
 #define PB15_TEST
 
-// Calibration PWM du servomoteur DM996 (en µs pour 50 Hz)
-#define SERVO_MIN_US  500              // 0.5 ms -> 0°
-#define SERVO_MAX_US  2400              // 2.0 ms -> 180°
+// Calibration PWM du servomoteur DM996 (en Âµs pour 50 Hz)
+#define SERVO_MIN_US  500              // 0.5 ms -> 0Â°
+#define SERVO_MAX_US  2400              // 2.0 ms -> 180Â°
 
 void Init_GPIOB(void);
 void Init_GPIOF(void);
@@ -25,19 +25,21 @@ void Init_GPIOG(void);
 void Init_GPIOI(void);
 void Init_TIM10(void);
 void Init_TIM11(void);
+void Init_TIM13(void);
 void Init_ADC3(void);
 void Init_DAC(void); 
 
-float capteur_d_cm = 0;
+float capteur_d_cm = 0.0f;
  
 osThreadId_t tid_Servo, tid_Capteur;
+osMutexId_t mutex_Capteur;
 
 void servo_set_angle(int deg) {
 	if (deg < 0)   deg = 0;
 	if (deg > 180) deg = 180;
 
 	uint32_t pulse_width = SERVO_MIN_US + (((SERVO_MAX_US - SERVO_MIN_US) * (uint32_t)deg) / 180);
-	TIM10->CCR1 = pulse_width;
+	TIM13->CCR1 = pulse_width;
 }
 
 static inline uint32_t read_echo_pin(void) {
@@ -51,7 +53,7 @@ static inline uint32_t read_echo_pin(void) {
 float distance_cm(void) {
 	uint32_t t_start, t_end;
 
-	// 1. Impulsion de déclenchement de 15 µs sur TRIG (PB14)
+	// 1. Impulsion de dÃ©clenchement de 15 Âµs sur TRIG (PB14)
 	GPIOB->ODR &= ~(1<<14);
 	TIM11->CNT = 0;
 	TIM11->CR1 |= (1<<0);
@@ -67,7 +69,7 @@ float distance_cm(void) {
 	while (read_echo_pin() == 0) {
 		if (TIM11->CNT >= 30000) {
 			TIM11->CR1 &= ~(1<<0);
-			return -1.0f; // TIMEOUT : aucun front montant détecté
+			return -1.0f; // TIMEOUT : aucun front montant dÃ©tectÃ©
 		}
 	}
 	t_start = TIM11->CNT;
@@ -76,7 +78,7 @@ float distance_cm(void) {
 	while (read_echo_pin() != 0) {
 		if ((TIM11->CNT - t_start) >= 30000) {
 			TIM11->CR1 &= ~(1<<0);
-			return -1.0f; // TIMEOUT : écho trop long / aucun obstacle
+			return -1.0f; // TIMEOUT : Ã©cho trop long / aucun obstacle
 		}
 	}
 	t_end = TIM11->CNT;
@@ -104,9 +106,13 @@ static void Thread_Servo(void *argument) {
 static void Thread_Capteur(void *argument) {
 	(void)argument;
 	while (1) {
-		// Pause automatique pendant un balayage SCAN UDP
 		if (!scan_en_cours) {
-			capteur_d_cm = distance_cm();
+			if (osMutexAcquire(mutex_Capteur, 0) == osOK) {
+				if (!scan_en_cours) { // Double vÃ©rification une fois le verrou acquis
+					capteur_d_cm = distance_cm();
+				}
+				osMutexRelease(mutex_Capteur);
+			}
 		}
 		osDelay(60);
 	}
@@ -115,6 +121,7 @@ static void Thread_Capteur(void *argument) {
 static int Init_Thread(void) {
 	tid_Capteur = osThreadNew(Thread_Capteur, NULL, NULL);
 	tid_Servo   = osThreadNew(Thread_Servo, NULL, NULL);
+	mutex_Capteur = osMutexNew(NULL);
 	if ((tid_Capteur == NULL) || (tid_Servo == NULL)) { 
 		return -1;
 	}
@@ -125,7 +132,7 @@ int main(void) {
 	configuration_overclock();
 
 	/**********************************
-	Début Initialisation périphérique
+	DÃ©but Initialisation pÃ©riphÃ©rique
 	**********************************/
 	Init_GPIOB();
 	Init_GPIOF();
@@ -135,8 +142,9 @@ int main(void) {
 	Init_DAC();
 	Init_TIM10();
 	Init_TIM11();
+	Init_TIM13();
 	/**********************************
-	Fin Initialisation périphérique
+	Fin Initialisation pÃ©riphÃ©rique
 	**********************************/
 
 	/**********************************
@@ -161,9 +169,9 @@ void Init_GPIOB(void) {
 	GPIOB->MODER &= ~(3<<28);
 	GPIOB->MODER |=  (1<<28); // PB14 en sortie (TRIG)
 	
-	GPIOB->MODER &= ~(3<<30); // PB15 en entrée (ECHO)
+	GPIOB->MODER &= ~(3<<30); // PB15 en entrÃ©e (ECHO)
 	GPIOB->PUPDR &= ~(3<<30);
-	GPIOB->PUPDR |=  (2<<30); // Pull-down sur PB15 pour éviter un niveau flottant
+	GPIOB->PUPDR |=  (2<<30); // Pull-down sur PB15 pour Ã©viter un niveau flottant
 }
 
 void Init_GPIOF(void) {
@@ -173,18 +181,18 @@ void Init_GPIOF(void) {
 
 void Init_GPIOG(void) {
 	RCC->AHB1ENR |= (1<<6);  // Horloge GPIOG
-	GPIOG->MODER &= ~(3<<12); // PG6 en entrée (ECHO)
+	GPIOG->MODER &= ~(3<<12); // PG6 en entrÃ©e (ECHO)
 }
 
 void Init_GPIOI(void) {
 	RCC->AHB1ENR |= (1<<8);
-	GPIOI->MODER &= ~(3<<0); // PI0 en entrée
+	GPIOI->MODER &= ~(3<<0); // PI0 en entrÃ©e
 	GPIOI->MODER &= ~(3<<4);
 	GPIOI->MODER |=  (1<<4); // PI2 en sortie (LED)
 }
 
 void Init_TIM10(void) {
-	RCC->APB2ENR |= (1<<17);
+	RCC->APB2ENR |= (1<<17); // Horloge TIM10 -> Fclk = 200 MHz
 	
 	GPIOF->MODER &= ~(3<<12);
 	GPIOF->MODER |=  (2<<12); // PF6 en Alternate Function (TIM10_CH1)
@@ -203,12 +211,31 @@ void Init_TIM10(void) {
 }
 
 void Init_TIM11(void) {
-	RCC->APB2ENR |= (1<<18);  // Horloge TIM11
+	RCC->APB2ENR |= (1<<18); // Horloge TIM11 -> Fclk = 200 MHz
 
-	TIM11->PSC = 199;         // 200 MHz / 200 = 1 MHz (1 tick = 1 µs)
-	TIM11->ARR = 0xFFFF;      // Compteur 16 bits max (65535 µs)
+	TIM11->PSC = 199;         // 200 MHz / 200 = 1 MHz (1 tick = 1 Âµs)
+	TIM11->ARR = 0xFFFF;      // Compteur 16 bits max (65535 Âµs)
 	TIM11->EGR = (1<<0);      // Charge le prescaler
 	TIM11->SR  = 0;           // Acquitte le flag UIF
+}
+
+void Init_TIM13(void) {
+	RCC->APB1ENR |= (1<<7); // Horloge TIM13 -> Fclk = 100 MHz
+	
+	GPIOF->MODER &= ~(3<<16);
+	GPIOF->MODER |=  (2<<16); // PF8 en Alternate Function (TIM13_CH1)
+	GPIOF->AFR[1] &= ~(0xF<<0);
+	GPIOF->AFR[1] |=  (9<<0);  // AF9 pour TIM13
+	
+	TIM13->CCMR1 |= (6<<4);
+	TIM13->CCER  |= (1<<0);
+	
+	TIM13->PSC = 99;
+	TIM13->ARR = 19999;
+	TIM13->EGR = (1<<0);
+	TIM13->SR  = 0;
+	
+	TIM13->CR1 |= (1<<0);
 }
 
 void Init_ADC3(void) {

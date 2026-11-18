@@ -48,7 +48,7 @@ void ID_SCREEN_00__ID_SLIDER_00__WM_NOTIFICATION_VALUE_CHANGED(APPW_ACTION_ITEM 
   int Val;
   Val = APPW_GetValue(ID_SCREEN_00, ID_SLIDER_00, NULL);
   //Val vaut une valeur entre 0 et 100
-  DAC->DHR12R1 = Val*4095.0/100;
+  DAC->DHR12R1 = (uint32_t)((float)Val*4095.0f/100.0f);
 }
 
 /*********************************************************************
@@ -57,11 +57,11 @@ void ID_SCREEN_00__ID_SLIDER_00__WM_NOTIFICATION_VALUE_CHANGED(APPW_ACTION_ITEM 
 */
 void ID_SCREEN_00__ID_ROTARY_00__WM_NOTIFICATION_VALUE_CHANGED(APPW_ACTION_ITEM * pAction, WM_HWIN hScreen, WM_MESSAGE * pMsg, int * pResult) {
   int Val;
-	double rc;
-//  Val = APPW_GetValue(ID_SCREEN_00, ID_ROTARY_00, NULL);
-//  //Val vaut une valeur entre -300 et 300
-//  rc = (Val+300)*100/600;
-//	TIM10->CCR1 = (int)rc*43199;
+	float rc;
+  Val = APPW_GetValue(ID_SCREEN_00, ID_ROTARY_00, NULL);
+  //Val vaut une valeur entre -300 et 300
+  rc = (float)(Val+300)/600.0f;
+	TIM10->CCR1 = (uint32_t)(rc*43199.0f);
 }
 
 /*********************************************************************
@@ -80,8 +80,8 @@ void ID_SCREEN_00__APPW_NOTIFICATION_INITDIALOG__ID_TIMER_00__APPW_JOB_START(APP
 *       ID_SCREEN_00__ID_TIMER_00__APPW_NOTIFICATION_TIMER
 */
 void ID_SCREEN_00__ID_TIMER_00__APPW_NOTIFICATION_TIMER(APPW_ACTION_ITEM * pAction, WM_HWIN hScreen, WM_MESSAGE * pMsg, int * pResult) {
-	char text[50];
-	APPW_SetValue(ID_SCREEN_00, ID_GAUGE_00, ADC3->DR);
+	char text[30];
+	APPW_SetValue(ID_SCREEN_00, ID_GAUGE_00, (int)ADC3->DR);
 	ADC3->CR2 |= (1<<30);
 	sprintf(text, "ANGLE : %d - DIST : %.1f cm", angle, capteur_d_cm);
 	TEXT_SetText(WM_GetDialogItem(hScreen, ID_TEXT_00), text);
