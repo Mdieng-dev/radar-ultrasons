@@ -1,30 +1,42 @@
 /*------------------------------------------------------------------------------
  * MDK Middleware - Component ::Network:Service
- * Copyright (c) 2004-2019 Arm Limited (or its affiliates). All rights reserved.
- *------------------------------------------------------------------------------
  * Name:    UDP_Socket.c
- * Purpose: UDP Socket Code Template
- * Rev.:    V7.0.0
+ * Purpose: Serveur UDP Radar Ultrason (ANGLE, DIST, SCAN) - STM32F746
  *----------------------------------------------------------------------------*/
-//! [code_UDP_Socket]
 #include "rl_net.h"
-#include "stm32f7xx.h"                  // Device header
-#include "AppWizard.h"
+#include "stm32f7xx.h"
+#include "cmsis_os2.h"
 #include <stdio.h>
 #include <string.h>
 
-//------- CONSTANT
-#define UDP_PORT 5000
- 
-int32_t udp_sock;                       // UDP socket handle
- 
- 
+//------- CONSTANTS
+#define UDP_PORT           5000
+#define FLAG_START_SCAN    (1<<0)
+#define MAX_UDP_PAYLOAD    1400  // Limite sous le MTU Ethernet (1500 octets)
+#define SERVO_SETTLE_MS    120   // Temps de stabilisation mécanique du servomoteur
+#define SENSOR_GUARD_MS    60    // Intervalle minimal entre deux mesures HC-SR04
+
+int32_t udp_sock;                  // UDP socket handle
+
+// Fonctions et variables externes définies dans main.c
 extern void  servo_set_angle(int deg);
+extern float distance_cm(void);
 extern float capteur_d_cm;
 
-/* Envoie un texte à l'expéditeur */
+// Contexte partagé entre udp_cb_func et Thread_Scan
+static osThreadId_t tid_Scan = NULL;
+volatile uint8_t scan_en_cours = 0;
+
+static int scan_debut = 0;
+static int scan_fin   = 180;
+static int scan_pas   = 10;
+static NET_ADDR scan_client_addr;
+
+/* Envoie un texte ASCII à l'expéditeur */
 static void reply(const NET_ADDR *addr, const char *msg) {
-  uint32_t n = strlen(msg);
+  uint32_t n = (uint32_t)strlen(msg);
+  if (n == 0U || udp_sock <= 0) return;
+
   uint8_t *b = netUDP_GetBuffer(n);
   if (b != NULL) {
     memcpy(b, msg, n);
@@ -32,94 +44,134 @@ static void reply(const NET_ADDR *addr, const char *msg) {
   }
 }
 
-// Notify the user application about UDP socket events.
+/* Tâche RTOS dédiée à l'exécution asynchrone du balayage SCAN */
+static void Thread_Scan(void *argument) {
+  (void)argument;
+  char payload[MAX_UDP_PAYLOAD];
+  char ligne[32];
 
-uint32_t udp_cb_func (int32_t socket, const NET_ADDR *addr, const uint8_t *buf, uint32_t len) {
+  while (1) {
+    // Attente passive du déclenchement par udp_cb_func
+    osThreadFlagsWait(FLAG_START_SCAN, osFlagsWaitAll, osWaitForever);
+
+    size_t offset = 0;
+    payload[0] = '\0';
+
+    for (int a = scan_debut; a <= scan_fin; a += scan_pas) {
+      // 1. Positionnement du servomoteur et stabilisation
+      servo_set_angle(a);
+      osDelay(SERVO_SETTLE_MS);
+
+      // 2. Mesure directe de distance (distance_cm gère déjà le timeout de 30 ms)
+      float d = distance_cm();
+      capteur_d_cm = d;
+
+      // 3. Formatage de la ligne "<angle> <cm>\n" (1 décimale)
+      int len_ligne;
+      if (d < 0.0f) {
+        len_ligne = snprintf(ligne, sizeof(ligne), "%d -1.0\n", a);
+      } else {
+        len_ligne = snprintf(ligne, sizeof(ligne), "%d %.1f\n", a, d);
+      }
+
+      // Vérification pour garantir que le balayage tient dans un seul datagramme UDP
+      if (len_ligne > 0 && (offset + (size_t)len_ligne + 5U) < sizeof(payload)) {
+        memcpy(&payload[offset], ligne, (size_t)len_ligne);
+        offset += (size_t)len_ligne;
+        payload[offset] = '\0';
+      } else {
+        break; // Arrêt propre si le pas demandé génère trop de lignes pour un datagramme
+      }
+
+      // 4. Espacement obligatoire d'au moins 60 ms entre deux mesures ultrason
+      osDelay(SENSOR_GUARD_MS);
+    }
+
+    // Ajout du marqueur de fin "END\n"
+    memcpy(&payload[offset], "END\n", 5U);
+    offset += 4U;
+
+    // Envoi groupé vers le client
+    reply(&scan_client_addr, payload);
+
+    scan_en_cours = 0;
+  }
+}
+
+/* Fonction de rappel appelée à chaque datagramme UDP reçu */
+uint32_t udp_cb_func(int32_t socket, const NET_ADDR *addr, const uint8_t *buf, uint32_t len) {
+  (void)socket;
   char cmd[64];
   char rep[32];
-  int angle, d10;
-  double d;
+  int angle, d_start, d_end, d_step;
 
-  //---  Copier buf en vraie chaîne C (avec '\0')
-  if (len >= sizeof(cmd)) len = sizeof(cmd) - 1;
+  //--- Copier buf en vraie chaîne C terminée par '\0' en s'appuyant sur len
+  if (len >= sizeof(cmd)) len = sizeof(cmd) - 1U;
   memcpy(cmd, buf, len);
   cmd[len] = '\0';
 
-  //---- Analyse
+  //--- Supprimer les retours chariot / sauts de ligne (\r, \n) et espaces finaux
+  while (len > 0U && (cmd[len - 1U] == '\n' || cmd[len - 1U] == '\r' || cmd[len - 1U] == ' ')) {
+    cmd[--len] = '\0';
+  }
+
+  //---- Analyse des commandes
   if (sscanf(cmd, "ANGLE %d", &angle) == 1) {
-    if (angle >= 0 && angle <= 180) {
+    if (scan_en_cours) {
+      reply(addr, "ERR BUSY\n");
+    } else if (angle >= 0 && angle <= 180) {
       servo_set_angle(angle);
       reply(addr, "OK\n");
     } else {
       reply(addr, "ERR RANGE\n");
     }
   }
-  else if (strncmp(cmd, "DIST", 4) == 0) {
-    d = capteur_d_cm;
-    if (d < 0) {
-      reply(addr, "DIST TIMEOUT\n");
+  else if (strcmp(cmd, "DIST") == 0) {
+    if (scan_en_cours) {
+      reply(addr, "ERR BUSY\n");
     } else {
-      sprintf(rep, "DIST %.1f\n", d);
-      reply(addr, rep);
+      float d = capteur_d_cm;
+      if (d < 0.0f) {
+        reply(addr, "DIST TIMEOUT\n");
+      } else {
+        snprintf(rep, sizeof(rep), "DIST %.1f\n", d);
+        reply(addr, rep);
+      }
+    }
+  }
+  else if (sscanf(cmd, "SCAN %d %d %d", &d_start, &d_end, &d_step) == 3) {
+    if (scan_en_cours) {
+      reply(addr, "ERR BUSY\n");
+    } else if (d_start < 0 || d_end > 180 || d_start > d_end || d_step <= 0) {
+      reply(addr, "ERR RANGE\n");
+    } else if (tid_Scan == NULL) {
+      reply(addr, "ERR INTERNAL\n");
+    } else {
+      scan_debut       = d_start;
+      scan_fin         = d_end;
+      scan_pas         = d_step;
+      scan_client_addr = *addr;
+      scan_en_cours    = 1;
+      osThreadFlagsSet(tid_Scan, FLAG_START_SCAN);
     }
   }
   else {
     reply(addr, "ERR UNKNOWN\n");
   }
-  return (0);
+
+  return 0;
 }
 
- 
-// Send UDP data to destination client.
-void send_udp_data (void) {
- 
-  if (udp_sock > 0) {
+/* Initialise la pile réseau, la tâche de scan et ouvre le socket UDP */
+void Init_Ethernet(void) {
+  netInitialize();
 
-    // Example
-    // IPv4 address: 192.168.0.1
-    NET_ADDR addr = { NET_ADDR_IP4, 5000, 192, 168, 0, 1 };
-    uint8_t *sendbuf;
- 
-    sendbuf = netUDP_GetBuffer (2);
-    sendbuf[0] = 0x01;
-    sendbuf[1] = 0xAA;
- 
-    netUDP_Send (udp_sock, &addr, sendbuf, 2);
-		
+  if (tid_Scan == NULL) {
+    tid_Scan = osThreadNew(Thread_Scan, NULL, NULL);
+  }
+
+  udp_sock = netUDP_GetSocket(udp_cb_func);
+  if (udp_sock > 0) {
+    netUDP_Open(udp_sock, UDP_PORT);
   }
 }
- 
-// Allocate and initialize the socket.
-void Init_Ethernet (void) {
- 
-  netInitialize ();
- 
-  // Initialize UDP socket and open port 5000
-  udp_sock = netUDP_GetSocket (udp_cb_func);
-  if (udp_sock > 0) {
-    netUDP_Open (udp_sock, UDP_PORT);
-  }
-}
-
-//! [code_UDP_Socket]
-
-/* Single Port Forwarding :
-
-port externe : 8003
-port interne : 5000
-protocole : UDP.
-adresse IP : 192.168.0.15
-règle activée
-
-3. Depuis le PC(raspberry), côté WAN, à travers le routeur (dans cmd, avec ncat si nc n’existe pas) :
-
-echo "ANGLE 90"| nc -u -w1 <IP WAN du routeur> 8000
-
-4. Dans Wireshark, sur le PC, utilise le filtre udp.port == 8003. On voit normalement partir le datagramme et revenir la réponse. 
-
-Comment Commit ?
-git add .
-git commit -m "Serveur UDP : commandes ANGLE et DIST avec réponses ERR"
-git push
-
-*/
