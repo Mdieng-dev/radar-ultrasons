@@ -7,7 +7,7 @@
 #include <QSettings>
 #include <QTableWidgetItem>
 
-#include "radar_proto.h"  // UDP_OK, UDP_ERR_CANCEL, RADAR_ERR_BOARD
+#include "udp_client.h"   // UDP_OK, UDP_ERR_CANCEL, RADAR_ERR_BOARD
 
 Dialog::Dialog(QWidget *parent)
     : QDialog(parent)
@@ -30,12 +30,12 @@ Dialog::Dialog(QWidget *parent)
     ui->progressBusy->setValue(0);
 
     // --- Thread réseau : le worker vit dans m_thread ---
-    m_worker = new RadarWorker;                 // pas de parent : il va changer de thread
+    m_worker = new Radar_Thread;                 // pas de parent : il va changer de thread
     m_worker->moveToThread(&m_thread);
     connect(&m_thread, &QThread::finished, m_worker, &QObject::deleteLater);
-    connect(this, &Dialog::radarRequested, m_worker, &RadarWorker::process);
-    connect(m_worker, &RadarWorker::attempt, this, &Dialog::onAttempt);
-    connect(m_worker, &RadarWorker::finished, this, &Dialog::onFinished);
+    connect(this, &Dialog::radarRequested, m_worker, &Radar_Thread::process);
+    connect(m_worker, &Radar_Thread::attempt, this, &Dialog::onAttempt);
+    connect(m_worker, &Radar_Thread::finished, this, &Dialog::onFinished);
     m_thread.setObjectName(QStringLiteral("reseau"));
     m_thread.start();
 

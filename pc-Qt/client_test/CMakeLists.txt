@@ -19,8 +19,6 @@ find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets)
 set(NET_SOURCES
         udp_client.c
         udp_client.h
-        radar_proto.c
-        radar_proto.h
 )
 
 set(PROJECT_SOURCES
@@ -28,8 +26,8 @@ set(PROJECT_SOURCES
         dialog.cpp
         dialog.h
         dialog.ui
-        radarworker.cpp
-        radarworker.h
+        radar_Thread.cpp
+        radar_Thread.h
         ${NET_SOURCES}
 )
 

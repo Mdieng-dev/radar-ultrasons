@@ -14,7 +14,6 @@
 #include <string.h>
 
 #include "udp_client.h"
-#include "radar_proto.h"
 
 static void on_attempt(void *ctx, int attempt, int max_attempts)
 {

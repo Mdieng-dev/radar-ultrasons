@@ -1,8 +1,8 @@
-#ifndef RADARWORKER_H
-#define RADARWORKER_H
+#ifndef RADAR_THREAD_H
+#define RADAR_THREAD_H
 
 /*------------------------------------------------------------------------------
- * RadarWorker — exécute les commandes réseau (code C bloquant) dans un
+ * Radar_Thread — exécute les commandes réseau (code C bloquant) dans un
  * QThread séparé, pour que l'interface ne se fige jamais pendant l'attente.
  *
  * Le dialogue émet une requête -> slot process() (exécuté dans le thread du
@@ -46,11 +46,11 @@ struct RadarResult {
 Q_DECLARE_METATYPE(RadarRequest)
 Q_DECLARE_METATYPE(RadarResult)
 
-class RadarWorker : public QObject
+class Radar_Thread : public QObject
 {
     Q_OBJECT
 public:
-    explicit RadarWorker(QObject *parent = nullptr) : QObject(parent) {}
+    explicit Radar_Thread(QObject *parent = nullptr) : QObject(parent) {}
 
     // Appelées depuis le thread de l'interface (variable atomique).
     void requestCancel() { m_cancel.store(true); }
@@ -71,4 +71,4 @@ private:
     std::atomic_bool m_cancel{false};
 };
 
-#endif // RADARWORKER_H
+#endif // RADAR_THREAD_H

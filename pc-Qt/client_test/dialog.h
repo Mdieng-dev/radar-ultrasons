@@ -4,7 +4,7 @@
 #include <QDialog>
 #include <QThread>
 
-#include "radarworker.h"
+#include "radar_Thread.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -21,7 +21,7 @@ public:
     ~Dialog() override;
 
 signals:
-    // Connecté (en file d'attente) au slot RadarWorker::process.
+    // Connecté (en file d'attente) au slot Radar_Thread::process.
     void radarRequested(const RadarRequest &req);
 
 private slots:
@@ -43,7 +43,7 @@ private:
 
     Ui::Dialog  *ui;
     QThread      m_thread;          // thread réseau
-    RadarWorker *m_worker = nullptr;
+    Radar_Thread *m_worker = nullptr;
     bool         m_busy = false;
 };
 #endif // DIALOG_H

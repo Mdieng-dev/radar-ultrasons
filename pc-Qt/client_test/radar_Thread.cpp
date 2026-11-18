@@ -1,22 +1,22 @@
-#include "radarworker.h"
+#include "radar_Thread.h"
 
 #include <QElapsedTimer>
 #include <QByteArray>
 
-#include "radar_proto.h"   // module C (extern "C" dans l'en-tête)
+#include "udp_client.h"    // module C (extern "C" dans l'en-tête)
 
-int RadarWorker::cancelledCb(void *ctx)
+int Radar_Thread::cancelledCb(void *ctx)
 {
-    return static_cast<RadarWorker *>(ctx)->m_cancel.load() ? 1 : 0;
+    return static_cast<Radar_Thread *>(ctx)->m_cancel.load() ? 1 : 0;
 }
 
-void RadarWorker::attemptCb(void *ctx, int attempt, int maxAttempts)
+void Radar_Thread::attemptCb(void *ctx, int attempt, int maxAttempts)
 {
     // Émis depuis le thread du worker : Qt le livre à l'interface en différé.
-    emit static_cast<RadarWorker *>(ctx)->attempt(attempt, maxAttempts);
+    emit static_cast<Radar_Thread *>(ctx)->attempt(attempt, maxAttempts);
 }
 
-void RadarWorker::process(const RadarRequest &req)
+void Radar_Thread::process(const RadarRequest &req)
 {
     // Ce code s'exécute dans le thread du worker : il peut bloquer sans
     // gêner l'interface.
@@ -24,7 +24,7 @@ void RadarWorker::process(const RadarRequest &req)
     res.request = req;
 
     const QByteArray host = req.host.toLatin1();   // chaîne C pour le module
-    udp_hooks_t hooks{ &RadarWorker::cancelledCb, &RadarWorker::attemptCb, this };
+    udp_hooks_t hooks{ &Radar_Thread::cancelledCb, &Radar_Thread::attemptCb, this };
     radar_conn_t conn{ host.constData(), req.port, req.timeoutMs, req.retries, &hooks };
 
     char raw[RADAR_REPLY_SIZE] = "";
