@@ -3,6 +3,7 @@
 extern void configuration_overclock(void);
 extern int Init_GUIThread (void);
 extern void Init_Ethernet (void);
+extern volatile uint8_t scan_en_cours;  // Défini dans UDP_Socket.c
 
 #ifdef _RTE_
 #include "RTE_Components.h"             // Component selection
@@ -11,10 +12,12 @@ extern void Init_Ethernet (void);
 #include "cmsis_os2.h"                  // ::CMSIS:RTOS2
 #endif
 
-// Commenter la ligne suivante pour utiliser PG6 au lieu de PB15
+// Utilise PB15 pour ECHO (commenter pour basculer sur PG6)
 #define USE_TEST_PB15
 
-#define FLAG_ECHO  (1<<1)
+// Calibration PWM du servomoteur DM996 (en µs pour 50 Hz)
+#define SERVO_MIN_US  500              // 1.0 ms -> 0°
+#define SERVO_MAX_US  2000              // 2.0 ms -> 180°
 
 void Init_GPIOB(void);
 void Init_GPIOF(void);
@@ -26,129 +29,102 @@ void Init_ADC3(void);
 void Init_DAC(void); 
 
 int angle = 0;
-float capteur_d_cm = 0.0;
+float capteur_d_cm = 0.0f;
  
 osThreadId_t tid_Servo, tid_Capteur;
 
+void servo_set_angle(int deg) {
+	if (deg < 0)   deg = 0;
+	if (deg > 180) deg = 180;
+
+	uint32_t pulse_width = SERVO_MIN_US + (((SERVO_MAX_US - SERVO_MIN_US) * (uint32_t)deg) / 180);
+	TIM10->CCR1 = pulse_width;
+}
+
+static inline uint32_t read_echo_pin(void) {
 #ifdef USE_TEST_PB15
-	void EXTI15_10_IRQHandler(void){
-		if (EXTI->PR & (1 << 15)) {
-			EXTI->PR = (1 << 15); // Acquittement PB15
-			if (tid_Capteur != NULL) {
-				osThreadFlagsSet(tid_Capteur, FLAG_ECHO);
-			}
-		}
-	}
+	return (GPIOB->IDR & (1<<15));
 #else
-	void EXTI9_5_IRQHandler(void){
-		if (EXTI->PR & (1 << 6)) {
-			EXTI->PR = (1 << 6); // Acquittement PG6
-			if (tid_Capteur != NULL) {
-				osThreadFlagsSet(tid_Capteur, FLAG_ECHO);
-			}
-		}
-	}
+	return (GPIOG->IDR & (1<<6));
 #endif
-
-
-void servo_set_angle(int deg){
-	float pulse_width;
-	pulse_width = 500 + ((2000 * deg) / 180); // 2 ms = 180° & 0.5 ms = 0°
-	TIM10->CCR1 = (int)pulse_width;
 }
  
-float distance_cm(void){
-	uint32_t t1 = 0, t2 = 0, flag;
-	float dt;
-	
-	// Nettoyage d'éventuels flags résiduels avant de lancer une mesure
-	osThreadFlagsClear(FLAG_ECHO);
+float distance_cm(void) {
+	uint32_t t_start, t_end;
 
-	// 1. Envoi de l'impulsion de 10 us sur TRIG (PB14)
-	GPIOB->ODR &= ~(1<<14); // TRIG à 0
+	// 1. Impulsion de déclenchement de 15 µs sur TRIG (PB14)
+	GPIOB->ODR &= ~(1<<14);
 	TIM11->CNT = 0;
-	TIM11->CR1 |= (1U << 0); // Démarrage du timer
-	while (TIM11->CNT < 2);
+	TIM11->CR1 |= (1<<0);
+	while (TIM11->CNT < 5);
 
-	GPIOB->ODR |= (1<<14); // TRIG à 1
+	GPIOB->ODR |= (1<<14);
 	TIM11->CNT = 0;
-	while (TIM11->CNT < 10);  // Attente précise de 10 us
-	GPIOB->ODR &= ~(1<<14); // TRIG à 0
+	while (TIM11->CNT < 15);
+	GPIOB->ODR &= ~(1<<14);
 
-	// 2. Mesure du temps de retour de l'Echo
-	TIM11->CNT = 0; // RAZ du chrono
+	// 2. Attente du front montant de ECHO (timeout 30 ms)
+	TIM11->CNT = 0;
+	while (read_echo_pin() == 0) {
+		if (TIM11->CNT >= 30000) {
+			TIM11->CR1 &= ~(1<<0);
+			return -1.0f; // TIMEOUT : aucun front montant détecté
+		}
+	}
+	t_start = TIM11->CNT;
 
-	// Attente du front montant de l'Echo avec timeout de 30 ms
-	flag = osThreadFlagsWait(FLAG_ECHO, osFlagsWaitAll, 30);
-	if (flag & osFlagsError) {
-		TIM11->CR1 &= ~(1<<0); // Arrêt propre du timer
-		return 400.0;
+	// 3. Mesure de la largeur de l'impulsion ECHO (timeout 30 ms)
+	while (read_echo_pin() != 0) {
+		if ((TIM11->CNT - t_start) >= 30000) {
+			TIM11->CR1 &= ~(1<<0);
+			return -1.0f; // TIMEOUT : écho trop long / aucun obstacle
+		}
 	}
-	
-#ifdef USE_TEST_PB15
-	if ((GPIOB->IDR & (1<<15)) != 0) t1 = TIM11->CNT;
-#else
-	if ((GPIOG->IDR & (1<<6)) != 0)  t1 = TIM11->CNT;
-#endif
-	
-	// Attente du front descendant de l'Echo avec timeout de 30 ms
-	flag = osThreadFlagsWait(FLAG_ECHO, osFlagsWaitAll, 30);
-	if (flag & osFlagsError) {
-		TIM11->CR1 &= ~(1<<0);
-		return 400.0;
-	}
-	
-#ifdef USE_TEST_PB15
-	if ((GPIOB->IDR & (1<<15)) == 0) t2 = TIM11->CNT;
-#else
-	if ((GPIOG->IDR & (1<<6)) == 0)  t2 = TIM11->CNT;
-#endif
-	
-	TIM11->CR1 &= ~(1<<0); // Arrêt du timer
-	
-	if (t2 <= t1) return -1.0f; // Sécurité en cas de front manqué
-	
-	dt = (float)(t2 - t1); // Durée de l'impulsion en us
-	return dt / 58.0f;     // Conversion us -> cm
+	t_end = TIM11->CNT;
+	TIM11->CR1 &= ~(1<<0);
+
+	if (t_end <= t_start) return -1.0f;
+
+	return (float)(t_end - t_start) / 58.0f;
 }
 
-static void Thread_Servo (void *argument)
-{
+static void Thread_Servo(void *argument) {
+	(void)argument;
 	int i = 0, sens = 1;
 
-	while (1)
-	{
-		//servo_set_angle(i);
+	while (1) {
+		// servo_set_angle(i);
 		if (i >= 180) sens = -1;
 		if (i <= 0)   sens = 1;
 		i += sens;
 		angle = i;
 
-		osDelay(10); // période de la boucle : 10 ms
+		osDelay(10);
 	}
 }
 
-static void Thread_Capteur(void *argument)
-{
+static void Thread_Capteur(void *argument) {
+	(void)argument;
 	while (1) {
-		capteur_d_cm = (float)distance_cm();
-		osDelay(60); // Pause obligatoire minimale de 60 ms entre 2 requêtes
+		// Pause automatique pendant un balayage SCAN UDP
+		if (!scan_en_cours) {
+			capteur_d_cm = distance_cm();
+		}
+		osDelay(65);
 	}
 }
 
-static int Init_Thread (void)
-{
-  tid_Capteur = osThreadNew(Thread_Capteur, NULL, NULL);
-  tid_Servo   = osThreadNew(Thread_Servo, NULL, NULL);
-  if ((tid_Capteur == NULL) || (tid_Servo == NULL)) { 
-    return -1;
-  }
-  return 0;
+static int Init_Thread(void) {
+	tid_Capteur = osThreadNew(Thread_Capteur, NULL, NULL);
+	tid_Servo   = osThreadNew(Thread_Servo, NULL, NULL);
+	if ((tid_Capteur == NULL) || (tid_Servo == NULL)) { 
+		return -1;
+	}
+	return 0;
 }
 
-int main(void)
-{
-  configuration_overclock(); // Configuration horloge (200 MHz)
+int main(void) {
+	configuration_overclock();
 
 	/**********************************
 	Début Initialisation périphérique
@@ -171,72 +147,49 @@ int main(void)
 	#ifdef RTE_CMSIS_RTOS2
 	  osKernelInitialize();
 
-		Init_Ethernet();
-		Init_GUIThread();
-		Init_Thread();
+	  Init_Ethernet();
+	  Init_GUIThread();
+	  Init_Thread();
 
 	  osKernelStart();
 	#endif
 
-  while (1);
+	while (1);
 }
 
-void Init_GPIOB(void){
+void Init_GPIOB(void) {
 	RCC->AHB1ENR |= (1<<1);  // Horloge GPIOB
-	RCC->APB2ENR |= (1<<14); // Horloge SYSCFG
 	
 	GPIOB->MODER &= ~(3<<28);
 	GPIOB->MODER |=  (1<<28); // PB14 en sortie (TRIG)
-	GPIOB->MODER &= ~(3<<30); // PB15 en entrée (test ECHO)
 	
-#ifdef USE_TEST_PB15
-	SYSCFG->EXTICR[3] &= ~(0xF<<12);
-	SYSCFG->EXTICR[3] |=  (1<<12); // Port B sur EXTI15
-	EXTI->RTSR |= (1<<15);
-	EXTI->FTSR |= (1<<15);
-	EXTI->IMR  |= (1<<15);
-	
-	NVIC_SetPriority(EXTI15_10_IRQn, 5); // Priorité compatible RTX5 (>= 5)
-	NVIC_EnableIRQ(EXTI15_10_IRQn);
-#endif
+	GPIOB->MODER &= ~(3<<30); // PB15 en entrée (ECHO)
+	GPIOB->PUPDR &= ~(3<<30);
+	GPIOB->PUPDR |=  (2<<30); // Pull-down sur PB15 pour éviter un niveau flottant
 }
 
-void Init_GPIOF(void){
+void Init_GPIOF(void) {
 	RCC->AHB1ENR |= (1<<5);
 	GPIOF->MODER |= (1<<14); // PF7 en sortie
 }
 
-void Init_GPIOG(void){
+void Init_GPIOG(void) {
 	RCC->AHB1ENR |= (1<<6);  // Horloge GPIOG
-	RCC->APB2ENR |= (1<<14); // Horloge SYSCFG
-	
 	GPIOG->MODER &= ~(3<<12); // PG6 en entrée (ECHO)
-	
-#ifndef USE_TEST_PB15
-	SYSCFG->EXTICR[1] &= ~(0xF<<8);
-	SYSCFG->EXTICR[1] |=  (6<<8); // Port G sur EXTI6
-
-	EXTI->RTSR |= (1<<6);
-	EXTI->FTSR |= (1<<6);
-	EXTI->IMR  |= (1<<6);
-	
-	NVIC_SetPriority(EXTI9_5_IRQn, 5); // Priorité compatible RTX5 (>= 5)
-	NVIC_EnableIRQ(EXTI9_5_IRQn);
-#endif
 }
 
 void Init_GPIOI(void) {
-    RCC->AHB1ENR |= (1<<8);
-    GPIOI->MODER &= ~(3<<0); // PI0 en entrée
-    GPIOI->MODER &= ~(3<<4);
-    GPIOI->MODER |=  (1<<4); // PI2 en sortie (LED)
+	RCC->AHB1ENR |= (1<<8);
+	GPIOI->MODER &= ~(3<<0); // PI0 en entrée
+	GPIOI->MODER &= ~(3<<4);
+	GPIOI->MODER |=  (1<<4); // PI2 en sortie (LED)
 }
 
-void Init_TIM10(void){
+void Init_TIM10(void) {
 	RCC->APB2ENR |= (1<<17);
 	
 	GPIOF->MODER &= ~(3<<12);
-	GPIOF->MODER |=  (2<<12); // PF6 en Alternate Function
+	GPIOF->MODER |=  (2<<12); // PF6 en Alternate Function (TIM10_CH1)
 	GPIOF->AFR[0] &= ~(0xF<<24);
 	GPIOF->AFR[0] |=  (3<<24);
 	
@@ -246,29 +199,31 @@ void Init_TIM10(void){
 	TIM10->PSC = 199;
 	TIM10->ARR = 19999;
 	TIM10->EGR = (1<<0);
+	TIM10->SR  = 0;
 	
 	TIM10->CR1 |= (1<<0);
 }
 
-void Init_TIM11(void){
-  RCC->APB2ENR |= (1<<18); // Horloge TIM11 (APB2 bit 18)
+void Init_TIM11(void) {
+	RCC->APB2ENR |= (1<<18);  // Horloge TIM11
 
-  TIM11->PSC = 199;           // 200 MHz / 200 = 1 MHz (1 tick = 1 us)
-  TIM11->ARR = 0xFFFF;        // Compteur 16 bits max (65535 us)
-  TIM11->EGR = (1<<0);     // Force la prise en compte immédiate du PSC
+	TIM11->PSC = 199;         // 200 MHz / 200 = 1 MHz (1 tick = 1 µs)
+	TIM11->ARR = 0xFFFF;      // Compteur 16 bits max (65535 µs)
+	TIM11->EGR = (1<<0);      // Charge le prescaler
+	TIM11->SR  = 0;           // Acquitte le flag UIF
 }
 
-void Init_ADC3(void){
-	RCC->APB2ENR |= (1U << 10);
-	RCC->AHB1ENR |= (1U << 5);
+void Init_ADC3(void) {
+	RCC->APB2ENR |= (1<<10);
+	RCC->AHB1ENR |= (1<<5);
 	
-	GPIOF->MODER |= (3U << 20);
+	GPIOF->MODER |= (3<<20);
 	
 	ADC3->SQR3 = 8;
-	ADC3->CR2 |= (1U << 0);
+	ADC3->CR2 |= (1<<0);
 }
 
-void Init_DAC(void){
-	RCC->APB1ENR |= (1U << 29);
-	RCC->AHB1ENR |= (1U << 0);
+void Init_DAC(void) {
+	RCC->APB1ENR |= (1<<29);
+	RCC->AHB1ENR |= (1<<0);
 }
