@@ -23,6 +23,7 @@ Purpose     : AppWizard managed file, function content could be changed
 #include "stdio.h"
 
 extern float capteur_d_cm;
+extern int angle;
 
 void cbID_SCREEN_00(WM_MESSAGE * pMsg) {
   GUI_USE_PARA(pMsg);
@@ -82,7 +83,7 @@ void ID_SCREEN_00__ID_TIMER_00__APPW_NOTIFICATION_TIMER(APPW_ACTION_ITEM * pActi
 	char text[50];
 	APPW_SetValue(ID_SCREEN_00, ID_GAUGE_00, ADC3->DR);
 	ADC3->CR2 |= (1<<30);
-	sprintf(text, "Distance : %.1f cm", capteur_d_cm);
+	sprintf(text, "ANGLE : %d - DIST : %.1f cm", angle, capteur_d_cm);
 	TEXT_SetText(WM_GetDialogItem(hScreen, ID_TEXT_00), text);
 }
 

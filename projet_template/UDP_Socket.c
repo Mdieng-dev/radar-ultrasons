@@ -9,12 +9,12 @@
 #include <stdio.h>
 #include <string.h>
 
-//------- CONSTANTS
-#define UDP_PORT           5000
-#define FLAG_START_SCAN    (1<<0)
-#define MAX_UDP_PAYLOAD    1400  // Limite sous le MTU Ethernet (1500 octets)
-#define SERVO_SETTLE_MS    120   // Temps de stabilisation mécanique du servomoteur
-#define SENSOR_GUARD_MS    60    // Intervalle minimal entre deux mesures HC-SR04
+// CONSTANTS
+#define UDP_PORT 5000
+#define FLAG_START_SCAN (1<<0)
+#define MAX_UDP_LEN 1400  // Limite sous le MTU Ethernet (1500 octets)
+#define SERVO_SABILISATION_MS 120   // Temps de stabilisation mécanique du servomoteur
+#define SENSOR_DELAY_MS 60    // Intervalle minimal entre deux mesures HC-SR04
 
 int32_t udp_sock;                  // UDP socket handle
 
@@ -28,14 +28,17 @@ static osThreadId_t tid_Scan = NULL;
 volatile uint8_t scan_en_cours = 0;
 
 static int scan_debut = 0;
-static int scan_fin   = 180;
-static int scan_pas   = 10;
+static int scan_fin = 180;
+static int scan_pas = 10;
 static NET_ADDR scan_client_addr;
+
+// Variable intermédiaire partagée avec ID_SCREEN_Slots.c pour la récupération de l'angle du servo
+int angle = 0;
 
 /* Envoie un texte ASCII à l'expéditeur */
 static void reply(const NET_ADDR *addr, const char *msg) {
   uint32_t n = (uint32_t)strlen(msg);
-  if (n == 0U || udp_sock <= 0) return;
+  if (n == 0 || udp_sock <= 0) return;
 
   uint8_t *b = netUDP_GetBuffer(n);
   if (b != NULL) {
@@ -47,7 +50,7 @@ static void reply(const NET_ADDR *addr, const char *msg) {
 /* Tâche RTOS dédiée à l'exécution asynchrone du balayage SCAN */
 static void Thread_Scan(void *argument) {
   (void)argument;
-  char payload[MAX_UDP_PAYLOAD];
+  char udp_len[MAX_UDP_LEN];
   char ligne[32];
 
   while (1) {
@@ -55,12 +58,14 @@ static void Thread_Scan(void *argument) {
     osThreadFlagsWait(FLAG_START_SCAN, osFlagsWaitAll, osWaitForever);
 
     size_t offset = 0;
-    payload[0] = '\0';
+    udp_len[0] = '\0';
 
     for (int a = scan_debut; a <= scan_fin; a += scan_pas) {
+			angle = a;
+			
       // 1. Positionnement du servomoteur et stabilisation
       servo_set_angle(a);
-      osDelay(SERVO_SETTLE_MS);
+      osDelay(SERVO_SABILISATION_MS);
 
       // 2. Mesure directe de distance (distance_cm gère déjà le timeout de 30 ms)
       float d = distance_cm();
@@ -70,29 +75,33 @@ static void Thread_Scan(void *argument) {
       int len_ligne;
       if (d < 0.0f) {
         len_ligne = snprintf(ligne, sizeof(ligne), "%d -1.0\n", a);
-      } else {
+      }
+			
+			else {
         len_ligne = snprintf(ligne, sizeof(ligne), "%d %.1f\n", a, d);
       }
 
       // Vérification pour garantir que le balayage tient dans un seul datagramme UDP
-      if (len_ligne > 0 && (offset + (size_t)len_ligne + 5U) < sizeof(payload)) {
-        memcpy(&payload[offset], ligne, (size_t)len_ligne);
+      if (len_ligne > 0 && (offset + (size_t)len_ligne + 5U) < sizeof(udp_len)) {
+        memcpy(&udp_len[offset], ligne, (size_t)len_ligne);
         offset += (size_t)len_ligne;
-        payload[offset] = '\0';
-      } else {
+        udp_len[offset] = '\0';
+      }
+			
+			else {
         break; // Arrêt propre si le pas demandé génère trop de lignes pour un datagramme
       }
 
       // 4. Espacement obligatoire d'au moins 60 ms entre deux mesures ultrason
-      osDelay(SENSOR_GUARD_MS);
+      osDelay(SENSOR_DELAY_MS);
     }
 
     // Ajout du marqueur de fin "END\n"
-    memcpy(&payload[offset], "END\n", 5U);
-    offset += 4U;
+    memcpy(&udp_len[offset], "END\n", 5U);
+    offset += 4;
 
     // Envoi groupé vers le client
-    reply(&scan_client_addr, payload);
+    reply(&scan_client_addr, udp_len);
 
     scan_en_cours = 0;
   }
@@ -106,12 +115,12 @@ uint32_t udp_cb_func(int32_t socket, const NET_ADDR *addr, const uint8_t *buf, u
   int angle, d_start, d_end, d_step;
 
   //--- Copier buf en vraie chaîne C terminée par '\0' en s'appuyant sur len
-  if (len >= sizeof(cmd)) len = sizeof(cmd) - 1U;
+  if (len >= sizeof(cmd)) len = sizeof(cmd) - 1;
   memcpy(cmd, buf, len);
   cmd[len] = '\0';
 
   //--- Supprimer les retours chariot / sauts de ligne (\r, \n) et espaces finaux
-  while (len > 0U && (cmd[len - 1U] == '\n' || cmd[len - 1U] == '\r' || cmd[len - 1U] == ' ')) {
+  while (len > 0 && (cmd[len - 1] == '\n' || cmd[len - 1] == '\r' || cmd[len - 1] == ' ')) {
     cmd[--len] = '\0';
   }
 
@@ -119,21 +128,30 @@ uint32_t udp_cb_func(int32_t socket, const NET_ADDR *addr, const uint8_t *buf, u
   if (sscanf(cmd, "ANGLE %d", &angle) == 1) {
     if (scan_en_cours) {
       reply(addr, "ERR BUSY\n");
-    } else if (angle >= 0 && angle <= 180) {
+    }
+		
+		else if (angle >= 0 && angle <= 180) {
       servo_set_angle(angle);
       reply(addr, "OK\n");
-    } else {
+    }
+		
+		else {
       reply(addr, "ERR RANGE\n");
     }
   }
+	
   else if (strcmp(cmd, "DIST") == 0) {
     if (scan_en_cours) {
       reply(addr, "ERR BUSY\n");
-    } else {
+    }
+		
+		else {
       float d = capteur_d_cm;
       if (d < 0.0f) {
         reply(addr, "DIST TIMEOUT\n");
-      } else {
+      }
+			
+			else {
         snprintf(rep, sizeof(rep), "DIST %.1f\n", d);
         reply(addr, rep);
       }
@@ -142,19 +160,26 @@ uint32_t udp_cb_func(int32_t socket, const NET_ADDR *addr, const uint8_t *buf, u
   else if (sscanf(cmd, "SCAN %d %d %d", &d_start, &d_end, &d_step) == 3) {
     if (scan_en_cours) {
       reply(addr, "ERR BUSY\n");
-    } else if (d_start < 0 || d_end > 180 || d_start > d_end || d_step <= 0) {
+    }
+		
+		else if (d_start < 0 || d_end > 180 || d_start > d_end || d_step <= 0) {
       reply(addr, "ERR RANGE\n");
-    } else if (tid_Scan == NULL) {
+    }
+		
+		else if (tid_Scan == NULL) {
       reply(addr, "ERR INTERNAL\n");
-    } else {
-      scan_debut       = d_start;
-      scan_fin         = d_end;
-      scan_pas         = d_step;
+    }
+		
+		else {
+      scan_debut = d_start;
+      scan_fin = d_end;
+      scan_pas = d_step;
       scan_client_addr = *addr;
-      scan_en_cours    = 1;
+      scan_en_cours = 1;
       osThreadFlagsSet(tid_Scan, FLAG_START_SCAN);
     }
   }
+	
   else {
     reply(addr, "ERR UNKNOWN\n");
   }

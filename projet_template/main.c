@@ -13,11 +13,11 @@ extern volatile uint8_t scan_en_cours;  // Défini dans UDP_Socket.c
 #endif
 
 // Utilise PB15 pour ECHO (commenter pour basculer sur PG6)
-#define USE_TEST_PB15
+#define PB15_TEST
 
 // Calibration PWM du servomoteur DM996 (en µs pour 50 Hz)
-#define SERVO_MIN_US  500              // 1.0 ms -> 0°
-#define SERVO_MAX_US  2000              // 2.0 ms -> 180°
+#define SERVO_MIN_US  500              // 0.5 ms -> 0°
+#define SERVO_MAX_US  2400              // 2.0 ms -> 180°
 
 void Init_GPIOB(void);
 void Init_GPIOF(void);
@@ -28,8 +28,7 @@ void Init_TIM11(void);
 void Init_ADC3(void);
 void Init_DAC(void); 
 
-int angle = 0;
-float capteur_d_cm = 0.0f;
+float capteur_d_cm = 0;
  
 osThreadId_t tid_Servo, tid_Capteur;
 
@@ -42,7 +41,7 @@ void servo_set_angle(int deg) {
 }
 
 static inline uint32_t read_echo_pin(void) {
-#ifdef USE_TEST_PB15
+#ifdef PB15_TEST
 	return (GPIOB->IDR & (1<<15));
 #else
 	return (GPIOG->IDR & (1<<6));
@@ -97,9 +96,8 @@ static void Thread_Servo(void *argument) {
 		if (i >= 180) sens = -1;
 		if (i <= 0)   sens = 1;
 		i += sens;
-		angle = i;
-
-		osDelay(10);
+		
+		osDelay(100);
 	}
 }
 
@@ -110,7 +108,7 @@ static void Thread_Capteur(void *argument) {
 		if (!scan_en_cours) {
 			capteur_d_cm = distance_cm();
 		}
-		osDelay(65);
+		osDelay(60);
 	}
 }
 
