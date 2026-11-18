@@ -45,5 +45,6 @@ private:
     QThread      m_thread;          // thread réseau
     Radar_Thread *m_worker = nullptr;
     bool         m_busy = false;
+    int          m_servoAngle = 90;  // dernier angle connu du servo (pour DIST)
 };
 #endif // DIALOG_H

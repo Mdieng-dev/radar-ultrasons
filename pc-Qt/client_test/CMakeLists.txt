@@ -28,6 +28,8 @@ set(PROJECT_SOURCES
         dialog.ui
         radar_Thread.cpp
         radar_Thread.h
+        radar_widget.cpp
+        radar_widget.h
         ${NET_SOURCES}
 )
 
@@ -55,6 +57,9 @@ else()
 endif()
 
 target_link_libraries(client_test PRIVATE Qt${QT_VERSION_MAJOR}::Widgets)
+# ui_dialog.h (généré dans build/) inclut radar_widget.h (widget promu) :
+# le dossier des sources doit être dans les chemins d'inclusion.
+target_include_directories(client_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 if(WIN32)
     target_link_libraries(client_test PRIVATE ws2_32)   # Winsock 2
 endif()

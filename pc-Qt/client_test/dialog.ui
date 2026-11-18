@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>820</width>
-    <height>680</height>
+    <width>860</width>
+    <height>900</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -272,7 +272,60 @@
         </property>
        </spacer>
       </item>
+      <item>
+       <widget class="QLabel" name="labelRange">
+        <property name="text">
+         <string>Portée :</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QSpinBox" name="spinRange">
+        <property name="toolTip">
+         <string>Distance représentée par le bord du radar.</string>
+        </property>
+        <property name="suffix">
+         <string> cm</string>
+        </property>
+        <property name="minimum">
+         <number>10</number>
+        </property>
+        <property name="maximum">
+         <number>400</number>
+        </property>
+        <property name="singleStep">
+         <number>10</number>
+        </property>
+        <property name="value">
+         <number>200</number>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="buttonClearRadar">
+        <property name="text">
+         <string>Effacer le radar</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <spacer name="spacerScanEnd">
+        <property name="orientation">
+         <enum>Qt::Orientation::Horizontal</enum>
+        </property>
+       </spacer>
+      </item>
      </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="RadarWidget" name="radarView" native="true">
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+       <horstretch>0</horstretch>
+       <verstretch>3</verstretch>
+      </sizepolicy>
+     </property>
     </widget>
    </item>
    <item>
@@ -361,6 +414,14 @@
    </item>
   </layout>
  </widget>
+ <customwidgets>
+  <customwidget>
+   <class>RadarWidget</class>
+   <extends>QWidget</extends>
+   <header>radar_widget.h</header>
+   <container>1</container>
+  </customwidget>
+ </customwidgets>
  <tabstops>
   <tabstop>lineEditHost</tabstop>
   <tabstop>spinPort</tabstop>
@@ -374,6 +435,8 @@
   <tabstop>spinScanEnd</tabstop>
   <tabstop>spinScanStep</tabstop>
   <tabstop>buttonScan</tabstop>
+  <tabstop>spinRange</tabstop>
+  <tabstop>buttonClearRadar</tabstop>
  </tabstops>
  <resources/>
  <connections/>

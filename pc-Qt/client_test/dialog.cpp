@@ -46,6 +46,13 @@ Dialog::Dialog(QWidget *parent)
     connect(ui->buttonCancel, &QPushButton::clicked, this, &Dialog::onCancelClicked);
     connect(ui->buttonClearLog, &QPushButton::clicked, ui->plainTextLog, &QPlainTextEdit::clear);
 
+    // --- Radar (nuage de points) ---
+    connect(ui->spinRange, &QSpinBox::valueChanged, this,
+            [this](int cm) { ui->radarView->setMaxRange(cm); });
+    connect(ui->buttonClearRadar, &QPushButton::clicked,
+            ui->radarView, &RadarWidget::clearRadar);
+    ui->radarView->setSweepAngle(m_servoAngle);
+
     loadSettings();
 }
 
@@ -175,6 +182,8 @@ void Dialog::onFinished(const RadarResult &res)
 
     switch (res.request.kind) {
     case RadarRequest::Angle:
+        m_servoAngle = res.request.angle;
+        ui->radarView->setSweepAngle(m_servoAngle);
         ui->labelStatus->setText(tr("Servo orienté à %1°.").arg(res.request.angle));
         break;
 
@@ -185,6 +194,8 @@ void Dialog::onFinished(const RadarResult &res)
         } else {
             ui->labelDistance->setText(tr("Distance : %1 cm").arg(res.cm, 0, 'f', 1));
             ui->labelStatus->setText(tr("Mesure reçue."));
+            // La mesure est prise dans la direction actuelle du servo.
+            ui->radarView->addMeasurement(m_servoAngle, res.cm);
         }
         break;
 
@@ -202,6 +213,17 @@ void Dialog::onFinished(const RadarResult &res)
             t->setItem(i, 0, a);
             t->setItem(i, 1, d);
         }
+        // Nuage de points : on repart d'un radar vide, on place le faisceau
+        // sur le dernier angle (setSweepAngle estompe les anciens échos, donc
+        // il est appelé AVANT d'ajouter les points), puis on ajoute les échos.
+        ui->radarView->clearRadar();
+        if (!res.points.isEmpty()) {
+            m_servoAngle = res.points.constLast().angle;
+            ui->radarView->setSweepAngle(m_servoAngle);
+        }
+        for (const ScanPoint &p : res.points)
+            if (!p.noEcho)
+                ui->radarView->addMeasurement(p.angle, p.cm);
         ui->labelStatus->setText(tr("Balayage terminé : %1 mesure(s).").arg(res.points.size()));
         break;
     }
@@ -248,6 +270,8 @@ void Dialog::loadSettings()
     ui->spinTimeout->setValue(s.value(QStringLiteral("timeoutMs"), 1000).toInt());
     ui->spinRetries->setValue(s.value(QStringLiteral("retries"), 2).toInt());
     ui->spinScanTimeout->setValue(s.value(QStringLiteral("scanTimeoutMs"), 10000).toInt());
+    ui->spinRange->setValue(s.value(QStringLiteral("rangeCm"), 200).toInt());
+    ui->radarView->setMaxRange(ui->spinRange->value());
 }
 
 void Dialog::saveSettings() const
@@ -258,4 +282,5 @@ void Dialog::saveSettings() const
     s.setValue(QStringLiteral("timeoutMs"), ui->spinTimeout->value());
     s.setValue(QStringLiteral("retries"), ui->spinRetries->value());
     s.setValue(QStringLiteral("scanTimeoutMs"), ui->spinScanTimeout->value());
+    s.setValue(QStringLiteral("rangeCm"), ui->spinRange->value());
 }
