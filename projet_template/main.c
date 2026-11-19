@@ -13,11 +13,11 @@ extern volatile uint8_t scan_en_cours;  // Défini dans UDP_Socket.c
 #endif
 
 // Utilise PB15 pour ECHO (commenter pour basculer sur PG6)
-#define PB15_TEST
+//#define PB15_TEST
 
 // Calibration PWM du servomoteur DM996 (en µs pour 50 Hz)
-#define SERVO_MIN_US  500              // 0.5 ms -> 0°
-#define SERVO_MAX_US  2400              // 2.0 ms -> 180°
+#define SERVO_MIN_US  500 // 0.5 ms -> 0°
+#define SERVO_MAX_US  2400 // 2.0 ms -> 180°
 
 void Init_GPIOB(void);
 void Init_GPIOF(void);
@@ -42,7 +42,7 @@ void servo_set_angle(int deg) {
 	TIM13->CCR1 = pulse_width;
 }
 
-static inline uint32_t read_echo_pin(void) {
+static uint32_t read_echo_pin(void) {
 #ifdef PB15_TEST
 	return (GPIOB->IDR & (1<<15));
 #else
@@ -251,4 +251,8 @@ void Init_ADC3(void) {
 void Init_DAC(void) {
 	RCC->APB1ENR |= (1<<29);
 	RCC->AHB1ENR |= (1<<0);
+	
+	GPIOA->MODER |= (3 << 8);
+	
+	DAC->CR |= (1 << 0);
 }

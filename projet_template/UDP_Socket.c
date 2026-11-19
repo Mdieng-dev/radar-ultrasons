@@ -22,6 +22,8 @@ int32_t udp_sock;                  // UDP socket handle
 extern void  servo_set_angle(int deg);
 extern float distance_cm(void);
 extern float capteur_d_cm;
+extern osMutexId_t mutex_Capteur;
+
 
 // Contexte partagé entre udp_cb_func et Thread_Scan
 static osThreadId_t tid_Scan = NULL;

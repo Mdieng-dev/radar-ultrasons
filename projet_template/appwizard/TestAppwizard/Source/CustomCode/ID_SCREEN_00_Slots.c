@@ -61,7 +61,7 @@ void ID_SCREEN_00__ID_ROTARY_00__WM_NOTIFICATION_VALUE_CHANGED(APPW_ACTION_ITEM 
   Val = APPW_GetValue(ID_SCREEN_00, ID_ROTARY_00, NULL);
   //Val vaut une valeur entre -300 et 300
   rc = (float)(Val+300)/600.0f;
-	TIM10->CCR1 = (uint32_t)(rc*43199.0f);
+	TIM10->CCR1 = (uint32_t)(rc*21600.0f);
 }
 
 /*********************************************************************
