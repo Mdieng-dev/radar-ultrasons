@@ -1,0 +1,442 @@
+﻿============================================================================================
+             COMPTE RENDU — MINI-PROJET « RADAR À ULTRASONS PILOTÉ PAR RÉSEAU »             
+============================================================================================
+    Binôme : Mouhamed DIENG et Noam BELLACENE · BUT3 ESE, groupe ESE1 · 19 novembre 2026    
+                Dépôt GitHub : https://github.com/Mdieng-dev/radar-ultrasons                
+
+
+1. PRÉSENTATION DU SYSTÈME
+==========================
+
+Le radar est constitué d'un capteur à ultrasons HC-SR04 fixé sur l'axe d'un servomoteur
+DM996, piloté par une carte STM32F7-DISCO. La carte est branchée côté LAN d'un routeur Cisco
+RV215W ; le PC, côté WAN, la commande à distance par UDP avec une application graphique Qt.
+
+Le PC ne peut pas joindre la carte directement : il envoie ses commandes à l'adresse WAN du
+routeur, sur un port externe. Le routeur les redirige (NAT, redirection de port) vers
+l'adresse LAN de la carte, fixée par une réservation DHCP, sur le port interne 5000.
+
+      Côté WAN                         Routeur RV215W                    Côté LAN
+     ┌──────────────────┐   UDP    ┌───────────────────────┐   UDP    ┌────────────────────┐
+     │ PC (client Qt)   │ ───────► │ Redirection de port   │ ───────► │ STM32F7-DISCO      │
+     │ module réseau C  │  WAN:8003│ 8003 ext. → 5000 int. │ LAN:5000 │ serveur UDP :5000  │
+     │ (Winsock)        │ ◄─────── │ Réservation DHCP      │ ◄─────── │ RTX5 + Middleware  │
+     └──────────────────┘ réponses └───────────────────────┘ réponses └─────────┬──────────┘
+                                                                      PWM (PF8)│  TRIG/ECHO
+                                                                  ┌────────────┴───┐ ┌──────────┐
+                                                                  │ Servo DM996    │ │ HC-SR04  │
+                                                                  └────────────────┘ └──────────┘
+
+Résultat obtenu : depuis l'interface graphique du PC, on oriente le servo (ANGLE), on mesure
+une distance (DIST) et on lance un balayage (SCAN), dont les mesures s'affichent dans un
+tableau et sur un radar en demi-cercle.
+
+
+
+2. RÉPARTITION DU TRAVAIL
+=========================
+
++-----------------------------+-----------------------------+------------------------------+
+| Étudiant                    | Rôle principal              | Réalisations                 |
++=============================+=============================+==============================+
+| Mouhamed DIENG (étudiant A) | Réseau, routeur,            | Échauffements séance 1,      |
+|                             | application PC              | première version du serveur  |
+|                             |                             | UDP (analyse des commandes à |
+|                             |                             | partir de buf/len), client   |
+|                             |                             | UDP en C (Winsock) avec      |
+|                             |                             | délai d'attente et nouvel    |
+|                             |                             | essai, application Qt        |
+|                             |                             | (thread réseau, tableau,     |
+|                             |                             | radar), documentation        |
++-----------------------------+-----------------------------+------------------------------+
+| Noam BELLACENE (étudiant B) | Carte et périphériques      | servo_set_angle (PWM),       |
+|                             |                             | distance_cm (HC-SR04),       |
+|                             |                             | balayage, commande SCAN      |
+|                             |                             | asynchrone (tâche RTOS),     |
+|                             |                             | robustesse du serveur (ERR), |
+|                             |                             | affichage angle/distance sur |
+|                             |                             | l'écran, seconde IHM Qt      |
+|                             |                             | (IHM3)                       |
++-----------------------------+-----------------------------+------------------------------+
+
+Le dépôt GitHub partagé contient l'historique complet (envois du 6 au 18 novembre).
+
+
+
+3. SCHÉMA DE CÂBLAGE
+====================
+
++---------------+---------------------+-------------------------+--------------------------+
+| Composant     | Broche du composant | Broche de la carte      | Rôle                     |
++===============+=====================+=========================+==========================+
+| Servo DM996   | Signal (orange)     | PF8 — TIM13_CH1 (AF9)   | PWM 50 Hz                |
++---------------+---------------------+-------------------------+--------------------------+
+| Servo DM996   | + (rouge)           | 5 V [À CONFIRMER :      | Puissance du servo       |
+|               |                     | alimentation externe ou |                          |
+|               |                     | carte]                  |                          |
++---------------+---------------------+-------------------------+--------------------------+
+| Servo DM996   | − (marron)          | GND commun              | Masse                    |
++---------------+---------------------+-------------------------+--------------------------+
+| HC-SR04       | TRIG                | PB14 (sortie)           | Impulsion de             |
+|               |                     |                         | déclenchement            |
++---------------+---------------------+-------------------------+--------------------------+
+| HC-SR04       | ECHO                | PB15 (entrée, pull-     | Durée aller-retour       |
+|               |                     | down) — voir remarque   |                          |
++---------------+---------------------+-------------------------+--------------------------+
+| HC-SR04       | VCC / GND           | 5 V / GND               | Alimentation             |
++---------------+---------------------+-------------------------+--------------------------+
+| Potentiomètre | Curseur             | PF10 — ADC3_IN8         | Jauge (échauffement)     |
++---------------+---------------------+-------------------------+--------------------------+
+| LED           | —                   | PI2 (sortie)            | Interrupteur             |
+|               |                     |                         | (échauffement)           |
++---------------+---------------------+-------------------------+--------------------------+
+
+                  STM32F7-DISCO
+                ┌───────────────┐
+      Servo ◄───┤ PF8  (TIM13)  │
+      signal    │               │         ┌──────────┐
+                │ PB14 (TRIG) ──┼────────►│ TRIG     │
+                │ PB15 (ECHO) ◄─┼─────────┤ ECHO     │  HC-SR04
+                │ 5V ───────────┼────────►│ VCC      │
+                │ GND ──────────┼────┬───►│ GND      │
+                └───────────────┘    │    └──────────┘
+      Alim 5 V servo (+) ──► Servo + │
+      Alim 5 V servo (−) ──► Servo − ┘  (masse commune avec la carte)
+
+Remarque : le sujet prévoit ECHO sur PG6. Pendant les essais, ECHO a été câblé sur PB15 ; le
+choix se fait par la constante PB15_TEST dans main.c (la commenter pour revenir sur PG6). [À
+COMPLÉTER : préciser le câblage utilisé le jour de la démonstration.]
+
+Le sujet recommande une alimentation adaptée au servo, avec masse commune avec la carte :
+alimenté directement par la carte, un servo peut provoquer des chutes de tension et des
+redémarrages quand il bouge. [À CONFIRMER : alimentation utilisée.]
+
+[À COMPLÉTER : photo du montage.]
+
+
+
+4. PLAN D'ADRESSAGE
+===================
+
++--------------+-----------+---------------+---------------+---------------+---------------+
+| Équipement   | Interface | Adresse IP    | Masque        | Passerelle    | Remarque      |
++==============+===========+===============+===============+===============+===============+
+| PC client    | côté WAN  | [À COMPLÉTER] | [À COMPLÉTER] | —             | port source   |
+|              |           |               |               |               | choisi par le |
+|              |           |               |               |               | système       |
++--------------+-----------+---------------+---------------+---------------+---------------+
+| Routeur      | WAN       | 192.168.184.1 | [À COMPLÉTER] | —             | adresse visée |
+| RV215W       |           | 60 [À         |               |               | par le PC,    |
+|              |           | CONFIRMER]    |               |               | port externe  |
+|              |           |               |               |               | 8003          |
++--------------+-----------+---------------+---------------+---------------+---------------+
+| Routeur      | LAN       | [À COMPLÉTER, | 255.255.255.0 | —             | serveur DHCP  |
+| RV215W       |           | ex.           |               |               | du LAN        |
+|              |           | 192.168.1.1]  |               |               |               |
++--------------+-----------+---------------+---------------+---------------+---------------+
+| Carte        | LAN       | [À COMPLÉTER  | 255.255.255.0 | IP LAN du     | MAC 1E-30-6C- |
+| STM32F7      |           | : IP          |               | routeur       | A2-45-15,     |
+|              |           | réservée]     |               |               | port UDP 5000 |
++--------------+-----------+---------------+---------------+---------------+---------------+
+| Raspberry Pi | LAN       | [À COMPLÉTER] | 255.255.255.0 | IP LAN du     | administratio |
+|              |           |               |               | routeur       | n du routeur, |
+|              |           |               |               |               | tests côté    |
+|              |           |               |               |               | LAN           |
++--------------+-----------+---------------+---------------+---------------+---------------+
+
+L'adresse MAC de la carte a été rendue unique dans RTE/Network/Net_Config_ETH_0.h
+(ETH0_MAC_ADDR = "1E-30-6C-A2-45-15"). La carte obtient son adresse par DHCP
+(ETH0_DHCP_ENABLE = 1) et l'affiche sur son écran.
+
+
+
+5. CONFIGURATION DU ROUTEUR
+===========================
+
+L'interface web du RV215W est ouverte depuis le navigateur de la Raspberry Pi (côté LAN), à
+l'adresse LAN du routeur.
+
+
+5.1 Réservation DHCP statique
+-----------------------------
+
+Menu Networking > LAN > Static DHCP : on associe l'adresse MAC de la carte
+(1E-30-6C-A2-45-15) à une adresse IP fixe du LAN [À COMPLÉTER]. Après un redémarrage de la
+carte, l'adresse affichée sur son écran est toujours la même.
+
+Pourquoi c'est indispensable : la règle de redirection pointe vers une adresse IP précise.
+Sans réservation, la carte pourrait recevoir une autre adresse après un redémarrage ou
+l'expiration du bail ; la règle enverrait alors les datagrammes vers une adresse vide et la
+carte ne recevrait plus rien.
+
+[À COMPLÉTER : capture d'écran de la page Static DHCP.]
+
+
+5.2 Redirection de port
+-----------------------
+
+Menu Firewall > Single Port Forwarding [À CONFIRMER : intitulé exact du menu] :
+
++-------------+--------------+--------------+-----------+------------------------+---------+
+| Application | Port externe | Port interne | Protocole | Adresse IP (LAN)       | Activée |
++=============+==============+==============+===========+========================+=========+
+| Radar       | 8003         | 5000         | UDP       | [IP réservée de la     | oui     |
+|             |              |              |           | carte]                 |         |
++-------------+--------------+--------------+-----------+------------------------+---------+
+
+Le port externe (8003) est volontairement différent du port interne (5000) : si la commande
+arrive à la carte, cela prouve que le routeur traduit bien le port. Le protocole doit être
+UDP : une règle déclarée en TCP ne laisse pas passer l'UDP.
+
+[À COMPLÉTER : capture d'écran de la règle de redirection.]
+
+
+5.3 Validation par couches
+--------------------------
+
+  1. Servo et capteur testés en local (boucle de test, valeurs affichées sur l'écran de la
+     carte).
+  2. Depuis la Raspberry Pi (LAN), sans redirection : echo "ANGLE 45" | nc -u <IP LAN carte>
+     5000 → le servo bouge et la carte répond OK.
+  3. Depuis le PC (WAN), à travers le routeur : echo "DIST" | nc -u 192.168.184.160 8003 →
+     réponse DIST <cm>.
+  4. Échange observé dans Wireshark (section 7), puis remplacement de netcat par
+     l'application Qt.
+
+
+
+6. PROTOCOLE DE COMMUNICATION
+=============================
+
+
+6.1 Commandes
+-------------
+
+La carte offre un service UDP sur le port 5000. Les messages sont en ASCII et se terminent
+par \n ; les distances sont en centimètres avec une décimale. Un datagramme contient une
+commande ; la réponse revient en un datagramme vers l'adresse et le port de l'expéditeur.
+
++--------------------------+-------------------------------+-------------------------------+
+| Commande                 | Effet                         | Réponse                       |
++==========================+===============================+===============================+
+| ANGLE <a>                | oriente le servo à a degrés   | OK, ou ERR RANGE si hors      |
+|                          | (0 à 180)                     | plage, ERR BUSY pendant un    |
+|                          |                               | SCAN                          |
++--------------------------+-------------------------------+-------------------------------+
+| DIST                     | renvoie la distance à l'angle | DIST <cm>, ou DIST TIMEOUT si |
+|                          | courant                       | aucun écho                    |
++--------------------------+-------------------------------+-------------------------------+
+| SCAN <début> <fin> <pas> | balaye de début à fin, une    | une ligne <angle> <cm> par    |
+|                          | mesure par angle              | mesure (-1.0 si pas d'écho),  |
+|                          |                               | puis END, en un seul          |
+|                          |                               | datagramme                    |
++--------------------------+-------------------------------+-------------------------------+
+| autre                    | —                             | ERR UNKNOWN (ERR RANGE si     |
+|                          |                               | paramètres invalides)         |
++--------------------------+-------------------------------+-------------------------------+
+
+Exemple d'échange :
+
+    PC → carte : SCAN 0 180 30\n
+    carte → PC : 0 52.3\n30 48.1\n60 -1.0\n90 120.4\n120 75.0\n150 33.8\n180 29.6\nEND\n
+
+
+6.2 Côté carte (projet Keil)
+----------------------------
+
+  - udp_cb_func() (UDP_Socket.c) est appelée par le Middleware à chaque datagramme reçu.
+    Elle copie buf dans une chaîne terminée par \0 en s'appuyant sur len (buf n'est pas
+    terminé), retire les \r, \n et espaces finaux (netcat ou Windows peuvent envoyer \r\n),
+    puis analyse la commande avec sscanf. La réponse est envoyée à l'adresse addr reçue
+    (netUDP_GetBuffer puis netUDP_Send).
+  - Aucune attente longue dans la fonction de rappel : SCAN est exécuté par une tâche RTOS
+    dédiée (Thread_Scan), réveillée par un drapeau (osThreadFlagsSet). Pendant le balayage,
+    les autres commandes reçoivent ERR BUSY.
+  - Pour chaque angle : servo_set_angle(), attente de stabilisation de 120 ms, mesure, puis
+    au moins 60 ms avant la mesure suivante. Les lignes sont accumulées dans un tampon de
+    1400 octets (sous le MTU Ethernet) et envoyées en un seul datagramme terminé par END.
+  - servo_set_angle() : TIM13 en PWM sur PF8, 50 Hz (PSC = 99, ARR = 19999 avec une horloge
+    de 100 MHz, soit 1 µs par pas). Largeur d'impulsion calibrée sur notre servo : 500 µs
+    pour 0° à 2400 µs pour 180°.
+  - distance_cm() : impulsion de 15 µs sur TRIG, mesure de la durée de ECHO avec TIM11 (1 µs
+    par pas), délai maximal de 30 ms sur chaque front, distance = durée / 58. En l'absence
+    d'écho, la fonction renvoie -1 (traduit en TIMEOUT).
+  - Thread_Capteur mesure en continu toutes les 60 ms et alimente DIST et l'écran ; un mutex
+    empêche qu'elle utilise TIM11 en même temps qu'un balayage.
+
+
+6.3 Côté PC (application Qt, dossier pc-Qt/client_test)
+-------------------------------------------------------
+
+  - Module réseau en C (udp_client.c/.h), avec Winsock : résolution de l'adresse
+    (getaddrinfo), socket(), sendto(), attente de la réponse avec select() par tranches de
+    100 ms (pour pouvoir annuler), recvfrom(), puis closesocket() dans tous les cas. Les
+    réponses qui ne viennent pas de l'adresse visée sont ignorées.
+  - Délai d'attente et nouvel essai : si rien n'arrive avant le délai (réglable, 1000 ms par
+    défaut, 10 s pour SCAN), la commande est renvoyée, jusqu'à N fois (2 par défaut). Un
+    ICMP « port inaccessible » (WSAECONNRESET sous Windows) est traité comme une perte.
+  - Analyse des réponses (même module) : OK / ERR, DIST <cm> / DIST TIMEOUT, et pour SCAN
+    découpage ligne par ligne jusqu'à END ; une réponse sans END est rejetée comme
+    incomplète. Les décimaux sont lus sans strtod, qui dépend de la langue du système
+    (virgule en français).
+  - Interface réactive : les fonctions C sont bloquantes, elles s'exécutent donc dans un
+    QThread séparé (objet Radar_Thread déplacé par moveToThread). L'interface envoie une
+    requête par signal et reçoit le résultat par signal ; la fenêtre ne se fige jamais et un
+    bouton Annuler interrompt l'attente.
+  - Saisies validées (adresse, port, angle, bornes du balayage), adresse et port non codés
+    en dur (mémorisés entre deux lancements), erreurs affichées en rouge dans la barre
+    d'état, journal horodaté des échanges, tableau angle/distance et radar en demi-cercle.
+  - Fermeture propre : annulation de l'attente en cours, arrêt du thread, fermeture des
+    sockets, puis WSACleanup.
+
+Le binôme a aussi réalisé une seconde interface (dossier IHM3), qui utilise QUdpSocket et un
+QTimer à la place du module C ; elle ajoute l'export CSV.
+
+
+
+7. CAPTURE WIRESHARK COMMENTÉE
+==============================
+
+[À COMPLÉTER : insérer la capture d'écran Wireshark.]
+
+Procédure : capture sur l'interface réseau du PC (côté WAN), filtre d'affichage udp.port ==
+8003, puis envoi depuis l'application de ANGLE 90, DIST et SCAN 0 180 30.
+
+Ce que l'on doit observer et commenter :
+
++----+--------------------------------+-------------------+--------------------------------+
+| N° | Source → Destination           | Contenu (données) | Commentaire                    |
++====+================================+===================+================================+
+| 1  | PC:<port éphémère> →           | ANGLE 90\n        | le PC vise l'adresse WAN du    |
+|    | 192.168.184.160:8003           |                   | routeur et le port externe,    |
+|    |                                |                   | jamais l'adresse LAN de la     |
+|    |                                |                   | carte                          |
++----+--------------------------------+-------------------+--------------------------------+
+| 2  | 192.168.184.160:8003 →         | OK\n              | la réponse revient de la même  |
+|    | PC:<même port>                 |                   | adresse et du même port : le   |
+|    |                                |                   | routeur fait la traduction     |
+|    |                                |                   | inverse                        |
++----+--------------------------------+-------------------+--------------------------------+
+| 3  | PC → 192.168.184.160:8003      | DIST\n            | —                              |
++----+--------------------------------+-------------------+--------------------------------+
+| 4  | 192.168.184.160:8003 → PC      | DIST 48.2\n       | —                              |
++----+--------------------------------+-------------------+--------------------------------+
+| 5  | PC → 192.168.184.160:8003      | SCAN 0 180 30\n   | —                              |
++----+--------------------------------+-------------------+--------------------------------+
+| 6  | 192.168.184.160:8003 → PC      | 0 52.3\n…END\n    | toutes les mesures dans un     |
+|    |                                |                   | seul datagramme, arrivé        |
+|    |                                |                   | environ 1,3 s après la requête |
+|    |                                |                   | (7 positions × ~190 ms)        |
++----+--------------------------------+-------------------+--------------------------------+
+
+Les valeurs ci-dessus sont des exemples : [À COMPLÉTER : remplacer par les numéros de
+trames, adresses et contenus réels de votre capture].
+
+Points à commenter sur la capture :
+
+  - Pas de poignée de main ni d'accusé de réception : UDP est sans connexion, chaque
+    commande est un datagramme indépendant.
+  - Côté LAN, la carte voit arriver un datagramme à destination de son adresse et du port
+    5000 ; l'adresse source est celle du PC, le routeur ne modifiant que la destination (à
+    vérifier en capturant côté LAN, depuis la Raspberry Pi).
+  - En cas de perte (carte débranchée, par exemple), on voit la même requête repartir après
+    le délai d'attente : ce sont les nouveaux essais du client.
+
+
+
+8. TESTS DES CAS LIMITES
+========================
+
++-------------------------------+--------------------------------+-------------------------+
+| Cas testé                     | Comportement attendu           | Résultat                |
++===============================+================================+=========================+
+| Commande inconnue (« HELLO ») | ERR UNKNOWN, la carte continue | [À COMPLÉTER]           |
+|                               | de répondre                    |                         |
++-------------------------------+--------------------------------+-------------------------+
+| Angle hors plage (ANGLE 200)  | ERR RANGE ; l'application      | [À COMPLÉTER]           |
+|                               | refuse aussi la saisie > 180   |                         |
++-------------------------------+--------------------------------+-------------------------+
+| SCAN avec début > fin ou pas  | ERR RANGE ; refusé par         | [À COMPLÉTER]           |
+| ≤ 0                           | l'application avant envoi      |                         |
++-------------------------------+--------------------------------+-------------------------+
+| Commande pendant un SCAN      | ERR BUSY, affiché dans         | [À COMPLÉTER]           |
+|                               | l'application                  |                         |
++-------------------------------+--------------------------------+-------------------------+
+| Datagramme perdu (câble       | nouvel essai, puis message «   | [À COMPLÉTER]           |
+| débranché)                    | pas de réponse » sans figer la |                         |
+|                               | fenêtre                        |                         |
++-------------------------------+--------------------------------+-------------------------+
+| Redémarrage de la carte       | même adresse IP (réservation   | [À COMPLÉTER]           |
+|                               | DHCP), l'application           |                         |
+|                               | refonctionne sans              |                         |
+|                               | reconfiguration                |                         |
++-------------------------------+--------------------------------+-------------------------+
+| Fin de ligne \r\n (netcat     | commande acceptée              | [À COMPLÉTER]           |
+| Windows)                      |                                |                         |
++-------------------------------+--------------------------------+-------------------------+
+| Aucun obstacle devant le      | DIST TIMEOUT / -1.0 dans le    | [À COMPLÉTER]           |
+| capteur                       | SCAN, affiché « pas d'écho »   |                         |
++-------------------------------+--------------------------------+-------------------------+
+| Distance mesurée comparée à   | écart de quelques mm à         | [À COMPLÉTER : valeurs] |
+| la règle                      | quelques cm                    |                         |
++-------------------------------+--------------------------------+-------------------------+
+
+
+
+9. DIFFICULTÉS RENCONTRÉES ET SOLUTIONS
+=======================================
+
+  - Mesure de la durée de ECHO : une première version utilisait des interruptions externes
+    (EXTI) sur les deux fronts de ECHO. Elle a été remplacée par une lecture de la broche
+    avec TIM11 et un délai maximal de 30 ms sur chaque front, qui ne peut jamais bloquer la
+    carte. [À CONFIRMER : problème observé avec la version EXTI.]
+  - Calibration du servo : les valeurs typiques du sujet (1 à 2 ms) ne correspondent pas à
+    la course complète de notre servo ; les bornes retenues sont 500 µs pour 0° et 2400 µs
+    pour 180° [À CONFIRMER : méthode de calibration]. Le signal PWM, d'abord généré par
+    TIM10 sur PF6, a été déplacé sur PF8 (TIM13), la broche prévue par le sujet.
+  - SCAN sans bloquer la réception : un balayage dure plus d'une seconde. Le faire dans la
+    fonction de rappel UDP aurait bloqué la réception des datagrammes ; il est donc exécuté
+    dans une tâche RTOS dédiée, et les commandes reçues pendant ce temps reçoivent ERR BUSY.
+  - Accès concurrent au capteur : la tâche de mesure continue et la tâche de balayage
+    peuvent appeler distance_cm() en même temps, donc utiliser TIM11 simultanément et
+    fausser une mesure ; un mutex protège désormais distance_cm().
+  - Taille de la réponse SCAN : elle doit tenir dans un seul datagramme. Le tampon est
+    limité à 1400 octets ; avec un pas de 1° (181 lignes), la réponse est tronquée. On
+    recommande donc un pas d'au moins 2°.
+  - Interface figée : les appels réseau bloquants dans le thread de l'interface figeaient la
+    fenêtre ; ils ont été déplacés dans un QThread.
+  - Décimaux et langue du système : strtod attend une virgule sur un Windows en français
+    alors que la carte envoie un point ; les nombres sont analysés à la main.
+  - Particularité Windows : un ICMP « port inaccessible » fait échouer le recvfrom suivant
+    (WSAECONNRESET) ; il est traité comme une perte et donne un message d'erreur précis.
+  - Travail à deux sur GitHub : conflits de fusion à résoudre sur des fichiers communs
+    (CMakeLists.txt, UDP_Socket.c), et dossier build de Qt qui ne doit pas être versionné
+    (il contient des chemins propres à chaque PC) ; un fichier pc-Qt/README.md explique
+    comment recompiler sur un autre poste.
+
+
+
+10. EXTENSIONS RÉALISÉES (POINTS BONUS)
+=======================================
+
+  - Radar en demi-cercle dans l'interface Qt (nuage de points des échos, faisceau, portée
+    réglable).
+  - Pas du balayage réglable depuis l'interface.
+  - Export CSV des mesures (interface IHM3).
+  - Non réalisés : filtrage par moyenne/médiane, numéro de séquence, jeton
+    d'authentification.
+
+
+
+11. REPRODUIRE LE PROJET
+========================
+
+  - Carte : ouvrir projet_template/MiniProjet.uvprojx dans Keil µVision (packs STM32F7xx_DFP
+    2.16.0 et MDK-Middleware 7.17.0, licence MDK Professional de l'école pour la pile
+    réseau), changer l'adresse MAC dans Net_Config_ETH_0.h, compiler et programmer la carte.
+  - Routeur : réservation DHCP de la MAC de la carte, puis redirection UDP du port externe
+    8003 vers le port 5000 de la carte (section 5).
+  - PC : ouvrir pc-Qt/client_test/CMakeLists.txt dans Qt Creator (Qt 6, kit MinGW 64 bits),
+    configurer, compiler et lancer client_test ; saisir l'adresse WAN du routeur et le port
+    8003. Le client console udp_cli permet de tester le module réseau sans interface
+    (udp_cli --selftest pour les tests d'analyse).
